@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+  MODERATOR
+}
+
+enum Day {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model Student {
+  id         String  @id @default(uuid())
+  name       String
+  email      String  @unique
+  rollNumber String  @unique
+  password   String          
+  deviceId   String?
+  batchId    String
+
+  batch      Batch   @relation(fields: [batchId], references: [id])
+}
+
+model Teacher {
+  id       String  @id @default(uuid())
+  name     String
+  email    String  @unique
+  password String         
+
+  classes  Class[]
+}
+
+model Admin {
+  id       String  @id @default(uuid())
+  name     String
+  email    String  @unique
+  password String          
+  role     Role    @default(ADMIN)
+}
+
+model Batch {
+  id       String    @id @default(uuid())
+  name     String
+
+  students Student[]
+  classes  Class[]
+}
+
+model Class {
+  id         String  @id @default(uuid())
+  subject    String
+  batchId    String
+  teacherId  String
+
+  day        Day
+  startTime  String
+  endTime    String
+
+  batch      Batch   @relation(fields: [batchId], references: [id])
+  teacher    Teacher @relation(fields: [teacherId], references: [id])
+}
