@@ -24,15 +24,15 @@ enum Day {
 }
 
 model Student {
-  id         String  @id @default(uuid())
-  name       String
-  email      String  @unique
-  rollNumber String  @unique
-  password   String          
-  deviceId   String?
-  batchId    String
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  enrollmentNumber String?  @unique
+  password     String          
+  deviceId     String?
+  batchId      String?
 
-  batch      Batch   @relation(fields: [batchId], references: [id])
+  batch        Batch?   @relation(fields: [batchId], references: [id])
 }
 
 model Teacher {

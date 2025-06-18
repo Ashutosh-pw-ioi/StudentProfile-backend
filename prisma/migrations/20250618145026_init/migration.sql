@@ -9,10 +9,10 @@ CREATE TABLE "Student" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "rollNumber" TEXT NOT NULL,
+    "enrollmentNumber" TEXT,
     "password" TEXT NOT NULL,
     "deviceId" TEXT,
-    "batchId" TEXT NOT NULL,
+    "batchId" TEXT,
 
     CONSTRAINT "Student_pkey" PRIMARY KEY ("id")
 );
@@ -63,7 +63,7 @@ CREATE TABLE "Class" (
 CREATE UNIQUE INDEX "Student_email_key" ON "Student"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Student_rollNumber_key" ON "Student"("rollNumber");
+CREATE UNIQUE INDEX "Student_enrollmentNumber_key" ON "Student"("enrollmentNumber");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Teacher_email_key" ON "Teacher"("email");
@@ -72,7 +72,7 @@ CREATE UNIQUE INDEX "Teacher_email_key" ON "Teacher"("email");
 CREATE UNIQUE INDEX "Admin_email_key" ON "Admin"("email");
 
 -- AddForeignKey
-ALTER TABLE "Student" ADD CONSTRAINT "Student_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Student" ADD CONSTRAINT "Student_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Class" ADD CONSTRAINT "Class_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
