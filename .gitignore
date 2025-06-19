@@ -1,3 +1,8 @@
+# Keep environment variables out of version control
+.env
+dist
+tsconfig.tsbuildinfo
+
 # Logs
 logs
 *.log
