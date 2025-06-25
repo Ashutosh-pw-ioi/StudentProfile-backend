@@ -1,200 +1,363 @@
-import { prisma } from "../src/db/prisma.js";
+import { prisma } from "../src/db/prisma.js"; 
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 
-const hash = (pwd: string) => bcrypt.hashSync(pwd, 10); 
+const hash = (pwd: string) => bcrypt.hashSync(pwd, 10);
+const pad = (n: number, l = 3) => String(n).padStart(l, "0");
+
+const ORG = {
+  Bangalore: {
+    id: "c1111111-1111-1111-1111-111111111111",
+    departments: {
+      SOT: ["SOT23B1", "SOT24B1", "SOT24B2"],
+      SOM: ["SOM23B1", "SOM24B2"],
+    },
+  },
+  Noida: {
+    id: "c2222222-2222-2222-2222-222222222222",
+    departments: {
+      SOT: ["SOT25B1"],
+      SOM: ["SOM25B1"],
+      SOH: ["SOH25B1"],
+    },
+  },
+  Pune: {
+    id: "c3333333-3333-3333-3333-333333333333",
+    departments: {
+      SOT: ["SOT25B1"],
+      SOM: ["SOM25B1"],
+      SOH: ["SOH25B1"],
+    },
+  },
+  Lucknow: {
+    id: "c4444444-4444-4444-4444-444444444444",
+    departments: {
+      SOT: ["SOT25B1"],
+      SOM: ["SOM25B1"],
+    },
+  },
+  Patna: {
+    id: "c5555555-5555-5555-5555-555555555555",
+    departments: {
+      SOT: ["SOT25B1"],
+      SOM: ["SOM25B1"],
+    },
+  },
+  Indore: {
+    id: "c6666666-6666-6666-6666-666666666666",
+    departments: {
+      SOT: ["SOT25B1"],
+      SOM: ["SOM25B1"],
+      SOH: ["SOH25B1"],
+    },
+  },
+} as const;
+
+const SEMESTERS = {
+  SOT: 8,
+  SOM: 6,
+  SOH: 6,
+} as const;
+
+// Updated SCORE_TYPES with max marks for each assessment type
+const SCORE_TYPES = [
+  { type: "FORTNIGHTLY_TEST", maxMarks: 20 },
+  { type: "ASSIGNMENT", maxMarks: 25 },
+  { type: "MID_SEM", maxMarks: 50 },
+  { type: "END_SEM", maxMarks: 100 },
+] as const;
+
+type DeptCode = keyof typeof SEMESTERS; // "SOT" | "SOM" | "SOH"
+type ScoreType = typeof SCORE_TYPES[number]["type"];
 
 async function main() {
-  await prisma.batch.createMany({
-    data: [
-      { id: "11111111-1111-1111-1111-111111111111", name: "Batch A" },
-      { id: "22222222-2222-2222-2222-222222222222", name: "Batch B" },
-      { id: "33333333-3333-3333-3333-333333333333", name: "Batch C" },
-      { id: "44444444-4444-4444-4444-444444444444", name: "Batch D" },
-      { id: "55555555-5555-5555-5555-555555555555", name: "Batch E" },
-    ],
+  console.log("🌱 Starting seed process...");
+
+  // Clear existing data in proper order to avoid foreign key constraints
+  console.log("🧹 Cleaning existing data...");
+  await prisma.courseScore.deleteMany();
+  await prisma.course.deleteMany();
+  await prisma.semester.deleteMany();
+  await prisma.batch.deleteMany();
+  await prisma.department.deleteMany();
+  await prisma.center.deleteMany();
+  await prisma.student.deleteMany();
+  await prisma.teacher.deleteMany();
+  await prisma.admin.deleteMany();
+
+  console.log("📍 Creating centers...");
+  const centers = Object.entries(ORG).map(([name, cfg]) => ({
+    id: cfg.id,
+    name,
+    location: name,
+  }));
+  await prisma.center.createMany({ data: centers });
+
+  console.log("🏢 Creating departments and batches...");
+  const departments: { id: string; name: DeptCode; centerId: string }[] = [];
+  const batches: { id: string; name: string; departmentId: string }[] = [];
+
+  for (const [
+    centerName,
+    { id: centerId, departments: deptMap },
+  ] of Object.entries(ORG)) {
+    for (const [deptCode, batchNames] of Object.entries(deptMap) as [
+      DeptCode,
+      string[]
+    ][]) {
+      const deptId = randomUUID();
+      departments.push({ id: deptId, name: deptCode, centerId });
+
+      for (const batchName of batchNames) {
+        batches.push({
+          id: randomUUID(),
+          name: batchName,
+          departmentId: deptId,
+        });
+      }
+    }
+  }
+  await prisma.department.createMany({ data: departments });
+  await prisma.batch.createMany({ data: batches });
+
+  console.log("📚 Creating semesters...");
+  const semesters: { id: string; number: number; batchId: string }[] = [];
+  const firstSemesterOfBatch: Record<string, string> = {};
+
+  for (const batch of batches) {
+    const deptCode = batch.name.slice(0, 3) as DeptCode;
+    const totalSem = SEMESTERS[deptCode];
+    for (let n = 1; n <= totalSem; n++) {
+      const id = randomUUID();
+      semesters.push({ id, number: n, batchId: batch.id });
+      if (n === 1) firstSemesterOfBatch[batch.id] = id;
+    }
+  }
+  await prisma.semester.createMany({ data: semesters });
+
+  console.log("👨‍🏫 Creating teachers...");
+  const teacherCount = 100;
+  const teachers = Array.from({ length: teacherCount }, (_, i) => ({
+    id: randomUUID(),
+    name: `Teacher ${i + 1}`,
+    email: `teacher${i + 1}@example.edu`,
+    password: hash("teacher123"),
+  }));
+  await prisma.teacher.createMany({ data: teachers });
+
+  console.log("📖 Creating courses...");
+  const courses: {
+    id: string;
+    name: string;
+    code: string;
+    credits: number;
+    semesterId: string;
+  }[] = [];
+  let courseSeq = 1;
+
+  for (const sem of semesters) {
+    for (let i = 0; i < 2; i++) {
+      const courseId = randomUUID();
+      const courseCode = `C${pad(courseSeq, 4)}`;
+      courses.push({
+        id: courseId,
+        name: `Course ${courseSeq}`,
+        code: courseCode,
+        credits: 3,
+        semesterId: sem.id,
+      });
+      courseSeq++;
+    }
+  }
+  await prisma.course.createMany({ data: courses });
+
+  console.log("👑 Creating admins...");
+  const admins = [
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: randomUUID(),
+      name: `Admin ${i + 1}`,
+      email: `admin${i + 1}@example.com`,
+      password: hash("admin123"),
+      role: "ADMIN" as const,
+    })),
+    {
+      id: randomUUID(),
+      name: "Super Admin",
+      email: "super.admin@example.com",
+      password: hash("super123"),
+      role: "SUPER_ADMIN" as const,
+    },
+    {
+      id: randomUUID(),
+      name: "Moderator",
+      email: "moderator@example.com",
+      password: hash("mod123"),
+      role: "MODERATOR" as const,
+    },
+  ];
+  await prisma.admin.createMany({ data: admins });
+
+  console.log("👨‍🎓 Creating students...");
+  const students: {
+    id: string;
+    name: string;
+    email: string;
+    gender: string;
+    phoneNumber: string;
+    enrollmentNumber: string;
+    password: string;
+    semesterNo: number;
+    centerId: string;
+    departmentId: string;
+    batchId: string;
+  }[] = [];
+
+  let studentSeq = 1;
+  for (const batch of batches) {
+    const department = departments.find((d) => d.id === batch.departmentId)!;
+    const center = centers.find((c) => c.id === department.centerId)!;
+
+    for (let s = 1; s <= 30; s++) {
+      const genders = ['male', 'female', 'other'];
+      const randomGender = genders[Math.floor(Math.random() * genders.length)];
+      
+      students.push({
+        id: randomUUID(),
+        name: `Student ${studentSeq}`,
+        email: `student${studentSeq}@example.edu`,
+        gender: randomGender,
+        phoneNumber: `92875341${pad(Math.floor(Math.random() * 100), 2)}`,
+        enrollmentNumber: `${center.name.slice(0, 3).toUpperCase()}${
+          batch.name
+        }${pad(s, 3)}`,
+        password: hash("student123"),
+        semesterNo: 1,
+        centerId: center.id,
+        departmentId: department.id,
+        batchId: batch.id,
+      });
+      studentSeq++;
+    }
+  }
+  await prisma.student.createMany({ data: students });
+
+  console.log("🔗 Creating course-teacher-student relationships...");
+
+  const teacherPool = [...teachers];
+  const studentsByBatch: Record<string, typeof students> = {};
+  for (const stu of students) {
+    (studentsByBatch[stu.batchId] ??= []).push(stu);
+  }
+
+  const availableStudentsByBatch: Record<string, typeof students> = {};
+  for (const [batchId, batchStudents] of Object.entries(studentsByBatch)) {
+    availableStudentsByBatch[batchId] = [...batchStudents];
+  }
+
+  for (const course of courses) {
+    const semester = semesters.find((s) => s.id === course.semesterId)!;
+    const batchId = semester.batchId;
+
+    const teacher = teacherPool[Math.floor(Math.random() * teacherPool.length)];
+
+    const availableStudents = availableStudentsByBatch[batchId] ?? [];
+    const roster = availableStudents.splice(
+      0,
+      Math.min(5, availableStudents.length)
+    );
+
+    if (roster.length === 0) {
+      console.warn(
+        `⚠️  No students available for course ${course.name} in batch ${batchId}`
+      );
+      continue;
+    }
+
+    await prisma.course.update({
+      where: { id: course.id },
+      data: {
+        teachers: { connect: { id: teacher.id } },
+        students: { connect: roster.map((s) => ({ id: s.id })) },
+      },
+    });
+  }
+
+  console.log("📊 Creating course scores with multiple assessment types...");
+  const courseScores: {
+    id: string;
+    marks: number;
+    scoreType: ScoreType;
+    studentId: string;
+    courseId: string;
+  }[] = [];
+
+  const coursesWithStudents = await prisma.course.findMany({
+    include: {
+      students: true,
+    },
   });
 
-  await prisma.teacher.createMany({
-    data: [
-      {
-        id: "aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-        name: "Ajay Sharma",
-        email: "ajay.sharma@example.com",
-        password: hash("password123"),
-      },
-      {
-        id: "bbbbbbb2-bbbb-bbbb-bbbb-bbbbbbbbbbb2",
-        name: "Bhavna Patel",
-        email: "bhavna.patel@example.com",
-        password: hash("password123"),
-      },
-      {
-        id: "ccccccc3-cccc-cccc-cccc-ccccccccccc3",
-        name: "Chirag Singh",
-        email: "chirag.singh@example.com",
-        password: hash("password123"),
-      },
-      {
-        id: "ddddddd4-dddd-dddd-dddd-ddddddddddd4",
-        name: "Divya Iyer",
-        email: "divya.iyer@example.com",
-        password: hash("password123"),
-      },
-      {
-        id: "eeeeeee5-eeee-eeee-eeee-eeeeeeeeeee5",
-        name: "Ethan D’Souza",
-        email: "ethan.dsouza@example.com",
-        password: hash("password123"),
-      },
-    ],
-  });
+  for (const course of coursesWithStudents) {
+    for (const student of course.students) {
+      // Create multiple scores for each student in each course
+      // Randomly select 2-4 different score types per student per course
+      const numScoreTypes = Math.floor(Math.random() * 3) + 2; // 2-4 score types
+      const selectedScoreTypes = [...SCORE_TYPES]
+        .sort(() => 0.5 - Math.random())
+        .slice(0, numScoreTypes);
 
-  await prisma.admin.createMany({
-    data: [
-      {
-        id: "99999991-1111-1111-1111-111111111111",
-        name: "Rohan Kapoor",
-        email: "rohan.k@example.com",
-        password: hash("admin123"),
-        role: "ADMIN",
-      },
-      {
-        id: "99999992-2222-2222-2222-222222222222",
-        name: "Sara Mehta",
-        email: "sara.m@example.com",
-        password: hash("super123"),
-        role: "SUPER_ADMIN",
-      },
-      {
-        id: "99999993-3333-3333-3333-333333333333",
-        name: "Vikram Rao",
-        email: "vikram.r@example.com",
-        password: hash("mod123"),
-        role: "MODERATOR",
-      },
-      {
-        id: "99999994-4444-4444-4444-444444444444",
-        name: "Pooja Desai",
-        email: "pooja.d@example.com",
-        password: hash("admin123"),
-        role: "ADMIN",
-      },
-      {
-        id: "99999995-5555-5555-5555-555555555555",
-        name: "Arjun Nair",
-        email: "arjun.n@example.com",
-        password: hash("admin123"),
-        role: "ADMIN",
-      },
-    ],
-  });
+      for (const scoreTypeConfig of selectedScoreTypes) {
+        // Generate marks based on the max marks for this assessment type
+        // Students get 40-95% of max marks
+        const percentage = Math.random() * 0.55 + 0.4; // 40% to 95%
+        const marks = Math.round(scoreTypeConfig.maxMarks * percentage);
 
-  await prisma.student.createMany({
-    data: [
-      {
-        id: "66666661-1111-1111-1111-111111111111",
-        name: "Anita Verma",
-        email: "anita.verma@example.com",
-        enrollmentNumber: "2301010001",
-        password: hash("student123"),
-        deviceId: "dev-A01",
-        batchId: "11111111-1111-1111-1111-111111111111",
-      },
-      {
-        id: "66666662-2222-2222-2222-222222222222",
-        name: "Bharat Singh",
-        email: "bharat.singh@example.com",
-        enrollmentNumber: "2301010002",
-        password: hash("student123"),
-        batchId: "22222222-2222-2222-2222-222222222222",
-      },
-      {
-        id: "66666663-3333-3333-3333-333333333333",
-        name: "Chetna Patel",
-        email: "chetna.patel@example.com",
-        enrollmentNumber: "2301010003",
-        password: hash("student123"),
-        deviceId: "dev-C03",
-        batchId: "33333333-3333-3333-3333-333333333333",
-      },
-      {
-        id: "66666664-4444-4444-4444-444444444444",
-        name: "Deepak Kumar",
-        email: "deepak.kumar@example.com",
-        enrollmentNumber: "2301010004",
-        password: hash("student123"),
-        batchId: "44444444-4444-4444-4444-444444444444",
-      },
-      {
-        id: "66666665-5555-5555-5555-555555555555",
-        name: "Esha Thomas",
-        email: "esha.thomas@example.com",
-        enrollmentNumber: "2301010005",
-        password: hash("student123"),
-        deviceId: "dev-E05",
-        batchId: "55555555-5555-5555-5555-555555555555",
-      },
-    ],
-  });
+        courseScores.push({
+          id: randomUUID(),
+          marks,
+          scoreType: scoreTypeConfig.type as ScoreType,
+          studentId: student.id,
+          courseId: course.id,
+        });
+      }
+    }
+  }
 
-  await prisma.class.createMany({
-    data: [
-      {
-        id: "77777771-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-        subject: "Mathematics",
-        batchId: "11111111-1111-1111-1111-111111111111",
-        teacherId: "aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-        day: "MONDAY",
-        startTime: "09:00",
-        endTime: "10:00",
-      },
-      {
-        id: "77777772-bbbb-bbbb-bbbb-bbbbbbbbbbb2",
-        subject: "Physics",
-        batchId: "22222222-2222-2222-2222-222222222222",
-        teacherId: "bbbbbbb2-bbbb-bbbb-bbbb-bbbbbbbbbbb2",
-        day: "TUESDAY",
-        startTime: "10:00",
-        endTime: "11:00",
-      },
-      {
-        id: "77777773-cccc-cccc-cccc-ccccccccccc3",
-        subject: "Chemistry",
-        batchId: "33333333-3333-3333-3333-333333333333",
-        teacherId: "ccccccc3-cccc-cccc-cccc-ccccccccccc3",
-        day: "WEDNESDAY",
-        startTime: "11:15",
-        endTime: "12:15",
-      },
-      {
-        id: "77777774-dddd-dddd-dddd-ddddddddddd4",
-        subject: "Biology",
-        batchId: "44444444-4444-4444-4444-444444444444",
-        teacherId: "ddddddd4-dddd-dddd-dddd-ddddddddddd4",
-        day: "THURSDAY",
-        startTime: "13:00",
-        endTime: "14:00",
-      },
-      {
-        id: "77777775-eeee-eeee-eeee-eeeeeeeeeee5",
-        subject: "English",
-        batchId: "55555555-5555-5555-5555-555555555555",
-        teacherId: "eeeeeee5-eeee-eeee-eeee-eeeeeeeeeee5",
-        day: "FRIDAY",
-        startTime: "14:15",
-        endTime: "15:15",
-      },
-    ],
+  if (courseScores.length > 0) {
+    console.log(`Creating ${courseScores.length} course scores...`);
+    await prisma.courseScore.createMany({ data: courseScores });
+  }
+
+  console.log("✅ Seed completed successfully!");
+  console.log(`📈 Summary:`);
+  console.log(`   📍 Centers: ${centers.length}`);
+  console.log(`   🏢 Departments: ${departments.length}`);
+  console.log(`   📚 Batches: ${batches.length}`);
+  console.log(`   📖 Semesters: ${semesters.length}`);
+  console.log(`   👨‍🏫 Teachers: ${teachers.length}`);
+  console.log(`   📖 Courses: ${courses.length}`);
+  console.log(`   👑 Admins: ${admins.length}`);
+  console.log(`   👨‍🎓 Students: ${students.length}`);
+  console.log(`   📊 Course Scores: ${courseScores.length}`);
+  
+  // Show score type distribution
+  const scoreTypeCount: Record<string, number> = {};
+  courseScores.forEach(score => {
+    scoreTypeCount[score.scoreType] = (scoreTypeCount[score.scoreType] || 0) + 1;
+  });
+  
+  console.log(`📈 Score type breakdown:`);
+  Object.entries(scoreTypeCount).forEach(([type, count]) => {
+    console.log(`   ${type}: ${count} scores`);
   });
 }
 
 main()
-  .then(() => {
-    console.log("✅ Dummy data inserted successfully.");
-    prisma.$disconnect();
-  })
-  .catch((e) => {
-    console.error("❌ Error inserting seed data:", e);
-    prisma.$disconnect();
+  .catch(async (err) => {
+    console.error("Seed failed:", err);
+    await prisma.$disconnect();
     process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
   });
