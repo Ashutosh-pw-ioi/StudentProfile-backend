@@ -39,6 +39,11 @@ async function getStudentDetails(req: Request, res: Response) {
             name: true,
           },
         },
+        _count: {
+          select: {
+            courses: true,
+          },
+        },
       },
     });
 
@@ -50,9 +55,14 @@ async function getStudentDetails(req: Request, res: Response) {
       return;
     }
 
+    const { _count, ...rest } = student;
+
     res.status(200).json({
       success: true,
-      data: student,
+      data: {
+        ...rest,
+        courseCount: _count.courses,
+      },
     });
     return;
   } catch (error) {
@@ -71,7 +81,7 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
     const id = req.userId;
 
     if (!id) {
-       res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Student ID is required",
       });
@@ -110,22 +120,21 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
     });
 
     if (!academicData) {
-       res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Student not found",
       });
       return;
     }
 
-     res.status(200).json({
+    res.status(200).json({
       success: true,
       data: academicData,
     });
     return;
-
   } catch (error) {
     console.error("Error fetching student academic records:", error);
-     res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Internal server error",
     });
@@ -187,14 +196,11 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
               },
             },
           },
-          orderBy: [
-            { course: { name: 'asc' } },
-            { scoreType: 'asc' },
-          ],
+          orderBy: [{ course: { name: "asc" } }, { scoreType: "asc" }],
         },
       },
       orderBy: {
-        enrollmentNumber: 'asc',
+        enrollmentNumber: "asc",
       },
     });
 
@@ -209,7 +215,6 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
       },
     });
     return;
-
   } catch (error) {
     console.error("Error fetching student marks by batch:", error);
     res.status(500).json({
@@ -280,16 +285,10 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
               },
             },
           },
-          orderBy: [
-            { course: { name: 'asc' } },
-            { scoreType: 'asc' },
-          ],
+          orderBy: [{ course: { name: "asc" } }, { scoreType: "asc" }],
         },
       },
-      orderBy: [
-        { center: { name: 'asc' } },
-        { enrollmentNumber: 'asc' },
-      ],
+      orderBy: [{ center: { name: "asc" } }, { enrollmentNumber: "asc" }],
     });
 
     // Group students by center for better organization
@@ -315,7 +314,6 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
       },
     });
     return;
-
   } catch (error) {
     console.error("Error fetching student marks by department:", error);
     res.status(500).json({

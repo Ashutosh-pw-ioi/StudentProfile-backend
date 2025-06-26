@@ -1,4 +1,4 @@
-import { prisma } from "../src/db/prisma.js"; 
+import { prisma } from "../src/db/prisma.js";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 
@@ -59,7 +59,6 @@ const SEMESTERS = {
   SOH: 6,
 } as const;
 
-// Updated SCORE_TYPES with max marks for each assessment type
 const SCORE_TYPES = [
   { type: "FORTNIGHTLY_TEST", maxMarks: 20 },
   { type: "ASSIGNMENT", maxMarks: 25 },
@@ -67,13 +66,12 @@ const SCORE_TYPES = [
   { type: "END_SEM", maxMarks: 100 },
 ] as const;
 
-type DeptCode = keyof typeof SEMESTERS; // "SOT" | "SOM" | "SOH"
-type ScoreType = typeof SCORE_TYPES[number]["type"];
+type DeptCode = keyof typeof SEMESTERS;
+type ScoreType = (typeof SCORE_TYPES)[number]["type"];
 
 async function main() {
   console.log("🌱 Starting seed process...");
 
-  // Clear existing data in proper order to avoid foreign key constraints
   console.log("🧹 Cleaning existing data...");
   await prisma.courseScore.deleteMany();
   await prisma.course.deleteMany();
@@ -142,17 +140,22 @@ async function main() {
     name: `Teacher ${i + 1}`,
     email: `teacher${i + 1}@example.edu`,
     password: hash("teacher123"),
+    gender: "male",
+    phoneNumber: `98765432${pad(i, 2)}`,
+    experience: Math.floor(Math.random() * 10) + 1,
+    centerId: centers[i % centers.length].id,
+    departmentId: departments[i % departments.length].id,
   }));
   await prisma.teacher.createMany({ data: teachers });
 
   console.log("📖 Creating courses...");
-  const courses: {
+  const courses = [] as {
     id: string;
     name: string;
     code: string;
     credits: number;
     semesterId: string;
-  }[] = [];
+  }[];
   let courseSeq = 1;
 
   for (const sem of semesters) {
@@ -198,7 +201,7 @@ async function main() {
   await prisma.admin.createMany({ data: admins });
 
   console.log("👨‍🎓 Creating students...");
-  const students: {
+  const students = [] as {
     id: string;
     name: string;
     email: string;
@@ -210,7 +213,7 @@ async function main() {
     centerId: string;
     departmentId: string;
     batchId: string;
-  }[] = [];
+  }[];
 
   let studentSeq = 1;
   for (const batch of batches) {
@@ -218,9 +221,9 @@ async function main() {
     const center = centers.find((c) => c.id === department.centerId)!;
 
     for (let s = 1; s <= 30; s++) {
-      const genders = ['male', 'female', 'other'];
+      const genders = ["male", "female", "other"];
       const randomGender = genders[Math.floor(Math.random() * genders.length)];
-      
+
       students.push({
         id: randomUUID(),
         name: `Student ${studentSeq}`,
@@ -242,36 +245,24 @@ async function main() {
   await prisma.student.createMany({ data: students });
 
   console.log("🔗 Creating course-teacher-student relationships...");
-
-  const teacherPool = [...teachers];
+  const teacherPool = await prisma.teacher.findMany();
   const studentsByBatch: Record<string, typeof students> = {};
   for (const stu of students) {
     (studentsByBatch[stu.batchId] ??= []).push(stu);
   }
-
-  const availableStudentsByBatch: Record<string, typeof students> = {};
-  for (const [batchId, batchStudents] of Object.entries(studentsByBatch)) {
-    availableStudentsByBatch[batchId] = [...batchStudents];
-  }
+  const availableStudentsByBatch = { ...studentsByBatch };
 
   for (const course of courses) {
     const semester = semesters.find((s) => s.id === course.semesterId)!;
     const batchId = semester.batchId;
-
     const teacher = teacherPool[Math.floor(Math.random() * teacherPool.length)];
-
     const availableStudents = availableStudentsByBatch[batchId] ?? [];
     const roster = availableStudents.splice(
       0,
       Math.min(5, availableStudents.length)
     );
 
-    if (roster.length === 0) {
-      console.warn(
-        `⚠️  No students available for course ${course.name} in batch ${batchId}`
-      );
-      continue;
-    }
+    if (roster.length === 0) continue;
 
     await prisma.course.update({
       where: { id: course.id },
@@ -282,34 +273,27 @@ async function main() {
     });
   }
 
-  console.log("📊 Creating course scores with multiple assessment types...");
-  const courseScores: {
+  console.log("📊 Creating course scores...");
+  const courseScores = [] as {
     id: string;
     marks: number;
     scoreType: ScoreType;
     studentId: string;
     courseId: string;
-  }[] = [];
+  }[];
 
   const coursesWithStudents = await prisma.course.findMany({
-    include: {
-      students: true,
-    },
+    include: { students: true },
   });
-
   for (const course of coursesWithStudents) {
     for (const student of course.students) {
-      // Create multiple scores for each student in each course
-      // Randomly select 2-4 different score types per student per course
-      const numScoreTypes = Math.floor(Math.random() * 3) + 2; // 2-4 score types
+      const numScoreTypes = Math.floor(Math.random() * 3) + 2;
       const selectedScoreTypes = [...SCORE_TYPES]
         .sort(() => 0.5 - Math.random())
         .slice(0, numScoreTypes);
 
       for (const scoreTypeConfig of selectedScoreTypes) {
-        // Generate marks based on the max marks for this assessment type
-        // Students get 40-95% of max marks
-        const percentage = Math.random() * 0.55 + 0.4; // 40% to 95%
+        const percentage = Math.random() * 0.55 + 0.4;
         const marks = Math.round(scoreTypeConfig.maxMarks * percentage);
 
         courseScores.push({
@@ -322,31 +306,26 @@ async function main() {
       }
     }
   }
-
-  if (courseScores.length > 0) {
-    console.log(`Creating ${courseScores.length} course scores...`);
+  if (courseScores.length > 0)
     await prisma.courseScore.createMany({ data: courseScores });
-  }
 
   console.log("✅ Seed completed successfully!");
-  console.log(`📈 Summary:`);
-  console.log(`   📍 Centers: ${centers.length}`);
-  console.log(`   🏢 Departments: ${departments.length}`);
-  console.log(`   📚 Batches: ${batches.length}`);
-  console.log(`   📖 Semesters: ${semesters.length}`);
-  console.log(`   👨‍🏫 Teachers: ${teachers.length}`);
-  console.log(`   📖 Courses: ${courses.length}`);
-  console.log(`   👑 Admins: ${admins.length}`);
-  console.log(`   👨‍🎓 Students: ${students.length}`);
-  console.log(`   📊 Course Scores: ${courseScores.length}`);
-  
-  // Show score type distribution
+  console.log(`📈 Centers: ${centers.length}`);
+  console.log(`🏢 Departments: ${departments.length}`);
+  console.log(`📚 Batches: ${batches.length}`);
+  console.log(`📖 Semesters: ${semesters.length}`);
+  console.log(`👨‍🏫 Teachers: ${teachers.length}`);
+  console.log(`📘 Courses: ${courses.length}`);
+  console.log(`👑 Admins: ${admins.length}`);
+  console.log(`👨‍🎓 Students: ${students.length}`);
+  console.log(`📊 Course Scores: ${courseScores.length}`);
+
   const scoreTypeCount: Record<string, number> = {};
-  courseScores.forEach(score => {
-    scoreTypeCount[score.scoreType] = (scoreTypeCount[score.scoreType] || 0) + 1;
+  courseScores.forEach((score) => {
+    scoreTypeCount[score.scoreType] =
+      (scoreTypeCount[score.scoreType] || 0) + 1;
   });
-  
-  console.log(`📈 Score type breakdown:`);
+  console.log("📈 Score type breakdown:");
   Object.entries(scoreTypeCount).forEach(([type, count]) => {
     console.log(`   ${type}: ${count} scores`);
   });

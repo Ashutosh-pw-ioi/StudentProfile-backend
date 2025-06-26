@@ -32,10 +32,11 @@ model Center {
   location    String
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  
+
   departments Department[]
   students    Student[]
-  
+  teachers    Teacher[]   
+
   @@map("centers")
 }
 
@@ -44,13 +45,14 @@ model Department {
   name        DepartmentType
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
-  
+
   center      Center         @relation(fields: [centerId], references: [id], onDelete: Cascade)
   centerId    String
-  
+
   batches     Batch[]
   students    Student[]
-  
+  teachers    Teacher[]      
+
   @@unique([centerId, name])
   @@map("departments")
 }
@@ -59,14 +61,14 @@ model Batch {
   id           String      @id @default(uuid())
   name         String
   createdAt    DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
+  updatedAt    DateTime    @updatedAt
+
   department   Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   departmentId String
-  
+
   semesters    Semester[]
   students     Student[]
-  
+
   @@unique([departmentId, name])
   @@map("batches")
 }
@@ -76,12 +78,12 @@ model Semester {
   number     Int
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
-  
+
   batch      Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
   batchId    String
-  
+
   courses    Course[]
-  
+
   @@unique([batchId, number])
   @@map("semesters")
 }
@@ -93,14 +95,14 @@ model Course {
   credits     Int         @default(3)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  
+
   semester    Semester    @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   semesterId  String
-  
+
   teachers    Teacher[]   @relation("CourseTeachers")
   students    Student[]   @relation("CourseStudents")
   scores      CourseScore[]
-  
+
   @@unique([semesterId, code])
   @@map("courses")
 }
@@ -110,11 +112,21 @@ model Teacher {
   name          String
   email         String     @unique
   password      String
+  gender        String
+  phoneNumber   String
+  experience    Int  
+
+  center        Center     @relation(fields: [centerId], references: [id])
+  centerId      String
+
+  department    Department @relation(fields: [departmentId], references: [id])
+  departmentId  String
+
+  courses       Course[]   @relation("CourseTeachers")
+
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-  
-  courses       Course[]   @relation("CourseTeachers")
-  
+
   @@map("teachers")
 }
 
@@ -123,43 +135,43 @@ model Student {
   name             String
   email            String         @unique
   gender           String
-  phoneNumber      String         
+  phoneNumber      String
   enrollmentNumber String         @unique
   password         String
   semesterNo       Int            @default(1)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  
+
   center           Center         @relation(fields: [centerId], references: [id])
   centerId         String
-  
+
   department       Department     @relation(fields: [departmentId], references: [id])
   departmentId     String
-  
+
   batch            Batch          @relation(fields: [batchId], references: [id])
   batchId          String
-  
+
   courses          Course[]       @relation("CourseStudents")
   scores           CourseScore[]
-  
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+
   @@map("students")
 }
 
 model CourseScore {
   id           String    @id @default(uuid())
   marks        Float
-  scoreType    ScoreType // Type of assessment
+  scoreType    ScoreType
   gradedAt     DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  
+
   student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId    String
-  
+
   course       Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId     String
-  
-  // A student can have multiple scores of different types for the same course
-  // But only one score per type per course (e.g., only one MID_SEM score per course)
+
   @@unique([studentId, courseId, scoreType])
   @@map("course_scores")
 }
@@ -172,6 +184,6 @@ model Admin {
   role      Role     @default(ADMIN)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@map("admins")
 }
