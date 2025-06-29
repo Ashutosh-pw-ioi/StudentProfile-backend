@@ -99,7 +99,7 @@ async function getTeachingDetails(req: Request, res: Response) {
     const id = req.userId;
 
     if (!id) {
-       res.status(400).json({
+      res.status(400).json({
         success: false,
         message: "Teacher ID is required",
       });
@@ -132,7 +132,7 @@ async function getTeachingDetails(req: Request, res: Response) {
     });
 
     if (!teacher) {
-       res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Teacher not found",
       });
@@ -159,14 +159,14 @@ async function getTeachingDetails(req: Request, res: Response) {
       };
     });
 
-     res.status(200).json({
+    res.status(200).json({
       success: true,
       data: teachingDetails,
     });
     return;
   } catch (error) {
     console.error("Error fetching teaching details:", error);
-     res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Internal server error",
     });
@@ -176,7 +176,7 @@ async function getTeachingDetails(req: Request, res: Response) {
 
 async function getStudentProfile(req: Request, res: Response) {
   try {
-    const { id } = req.body;
+    const { id } = req.params;
 
     if (!id) {
       res.status(400).json({
@@ -237,4 +237,206 @@ async function getStudentProfile(req: Request, res: Response) {
   }
 }
 
-export { getTeacherProfile, getTeachingDetails, getStudentProfile };
+async function getTeachersByCenter(req: Request, res: Response) {
+  try {
+    const userId = req.userId as string;
+    const userRole = req.userRole as string;
+
+    let centerId: string;
+
+    if (userRole === "ADMIN") {
+      // Find admin and extract centerId
+      const admin = await prisma.admin.findUnique({
+        where: { id: userId },
+        select: { centerId: true },
+      });
+
+      if (!admin) {
+         res.status(404).json({
+          success: false,
+          message: "Admin not found",
+        });
+        return;
+      }
+
+      centerId = admin.centerId;
+
+    } else if (userRole === "SUPER_ADMIN") {
+      const { centerName } = req.body;
+
+      if (!centerName) {
+         res.status(400).json({
+          success: false,
+          message: "Center name is required for Super Admin",
+        });
+        return;
+      }
+
+      const center = await prisma.center.findUnique({
+        where: { name: centerName },
+      });
+
+      if (!center) {
+         res.status(404).json({
+          success: false,
+          message: "Center not found",
+        });
+        return;
+      }
+
+      centerId = center.id;
+
+    } else {
+       res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+      return;
+    }
+
+    // Fetch teachers based on resolved centerId
+    const teachers = await prisma.teacher.findMany({
+      where: { centerId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        center: { select: { name: true } },
+        department: { select: { name: true } },
+        batches: { select: { name: true } },
+      },
+    });
+
+    const totalCount = await prisma.teacher.count({ where: { centerId } });
+
+     res.status(200).json({
+      success: true,
+      totalCount,
+      teachers,
+    });
+    return;
+  } catch (error) {
+    console.error("Error fetching teachers by center:", error);
+     res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+    return;
+  }
+}
+
+async function updateTeacher (req: Request, res: Response){
+  try {
+    const { id } = req.body;
+
+    const {
+      name,
+      email,
+      password,
+      gender,
+      phoneNumber,
+      experience,
+      centerName,
+      depName,
+    } = req.body;
+
+    if (!id || !centerName || !depName) {
+       res.status(400).json({
+        success: false,
+        message: "Teacher ID, centerName, and depName are required",
+      });
+      return;
+    }
+
+    const center = await prisma.center.findUnique({
+      where: { name: centerName },
+    });
+
+    if (!center) {
+       res.status(404).json({ success: false, message: "Center not found" });
+       return;
+    }
+
+    const department = await prisma.department.findFirst({
+      where: {
+        centerId: center.id,
+        name: depName,
+      },
+    });
+
+    if (!department) {
+       res.status(404).json({ success: false, message: "Department not found" });
+       return;
+    }
+
+    const existingTeacher = await prisma.teacher.findUnique({
+      where: { id },
+    });
+
+    if (!existingTeacher) {
+       res.status(404).json({ success: false, message: "Teacher not found" });
+       return;
+    }
+
+    const updatedTeacher = await prisma.teacher.update({
+      where: { id },
+      data: {
+        name,
+        email,
+        password,
+        gender,
+        phoneNumber,
+        experience,
+        centerId: center.id,
+        departmentId: department.id,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Teacher updated successfully",
+      data: updatedTeacher,
+    });
+    return;
+  } catch (error) {
+    console.error("Error updating teacher:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+    return;
+  }
+};
+
+async function deleteTeacher (req: Request, res: Response){
+  try {
+    const { id } = req.body;
+
+    if (!id) {
+       res.status(400).json({ success: false, message: "Teacher ID is required" });
+       return;
+    }
+
+    const existingTeacher = await prisma.teacher.findUnique({
+      where: { id },
+    });
+
+    if (!existingTeacher) {
+       res.status(404).json({ success: false, message: "Teacher not found" });
+       return;
+    }
+
+    await prisma.teacher.delete({
+      where: { id },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Teacher deleted successfully",
+    });
+    return;
+  } catch (error) {
+    console.error("Error deleting teacher:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+    return;
+  }
+};
+
+export { getTeacherProfile, getTeachingDetails, getStudentProfile,getTeachersByCenter,updateTeacher,deleteTeacher };

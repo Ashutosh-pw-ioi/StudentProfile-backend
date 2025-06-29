@@ -14,9 +14,9 @@ enum Role {
 }
 
 enum DepartmentType {
-  SOT  
-  SOM 
-  SOH 
+  SOT
+  SOM
+  SOH
 }
 
 enum ScoreType {
@@ -24,6 +24,7 @@ enum ScoreType {
   ASSIGNMENT
   MID_SEM
   END_SEM
+  INTERVIEW
 }
 
 model Center {
@@ -35,7 +36,8 @@ model Center {
 
   departments Department[]
   students    Student[]
-  teachers    Teacher[]   
+  teachers    Teacher[]
+  admins      Admin[]      
 
   @@map("centers")
 }
@@ -51,7 +53,7 @@ model Department {
 
   batches     Batch[]
   students    Student[]
-  teachers    Teacher[]      
+  teachers    Teacher[]
 
   @@unique([centerId, name])
   @@map("departments")
@@ -68,6 +70,7 @@ model Batch {
 
   semesters    Semester[]
   students     Student[]
+  teachers     Teacher[]   @relation("BatchTeachers") 
 
   @@unique([departmentId, name])
   @@map("batches")
@@ -114,7 +117,7 @@ model Teacher {
   password      String
   gender        String
   phoneNumber   String
-  experience    Int  
+  experience    Int
 
   center        Center     @relation(fields: [centerId], references: [id])
   centerId      String
@@ -123,6 +126,7 @@ model Teacher {
   departmentId  String
 
   courses       Course[]   @relation("CourseTeachers")
+  batches       Batch[]    @relation("BatchTeachers")  
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -155,35 +159,41 @@ model Student {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-
   @@map("students")
 }
 
 model CourseScore {
-  id           String    @id @default(uuid())
-  marks        Float
-  scoreType    ScoreType
-  gradedAt     DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String      @id @default(uuid())
+  marksObtained  Float
+  totalObtained  Float
+  dateOfExam     DateTime
+  scoreType      String
+  name           ScoreType
+  gradedAt       DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studentId    String
+  student        Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId      String
 
-  course       Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  courseId     String
+  course         Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId       String
 
-  @@unique([studentId, courseId, scoreType])
+  @@unique([studentId, courseId])
   @@map("course_scores")
 }
 
 model Admin {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(ADMIN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  password    String
+  role        Role     @default(ADMIN)
+
+  center      Center   @relation(fields: [centerId], references: [id]) 
+  centerId    String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("admins")
 }
