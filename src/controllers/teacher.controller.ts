@@ -1,5 +1,140 @@
 import { Request, Response } from "express";
 import { prisma } from "../db/prisma.js";
+import { parseTeacherExcel } from "../utils/parseTeacherExcel.js";
+import bcrypt from "bcryptjs";
+
+ async function addTeacher(req: Request, res: Response) {
+  try {
+    const userRole = req.userRole as string;
+    const adminId = req.userId as string;
+
+    if (!req.file) {
+       res.status(400).json({ success: false, message: "No Excel file uploaded" });
+       return;
+    }
+
+    const buffer = req.file.buffer;
+    const teachersData = parseTeacherExcel(buffer);
+
+    let adminCenterId: string | null = null;
+    if (userRole === "ADMIN") {
+      const admin = await prisma.admin.findUnique({
+        where: { id: adminId },
+      });
+
+      if (!admin) {
+         res.status(403).json({ success: false, message: "Admin not found" });
+         return;
+      }
+
+      adminCenterId = admin.centerId;
+    }
+
+    const createdTeachers = [];
+
+    for (const teacher of teachersData) {
+      const {
+        name,
+        email,
+        password,
+        gender,
+        phoneNumber,
+        experience,
+        centerName,
+        departmentName,
+        batchName,
+        courseName,
+      } = teacher;
+
+      const center = await prisma.center.findUnique({
+        where: { name: centerName },
+      });
+      if (!center) {
+        throw new Error(`Center not found: ${centerName}`);
+      }
+
+      if (userRole === "ADMIN" && center.id !== adminCenterId) {
+         res.status(403).json({
+          success: false,
+          message: `You are not authorized to add teachers to ${centerName}`,
+        });
+        return;
+      }
+
+      const department = await prisma.department.findFirst({
+        where: {
+          name: departmentName as any,
+          centerId: center.id,
+        },
+      });
+      if (!department) {
+        throw new Error(`Department not found: ${departmentName} in center ${centerName}`);
+      }
+
+      const batch = await prisma.batch.findFirst({
+        where: {
+          name: batchName,
+          departmentId: department.id,
+        },
+      });
+      if (!batch) {
+        throw new Error(`Batch not found: ${batchName} in department ${departmentName}`);
+      }
+
+      const course = await prisma.course.findFirst({
+        where: {
+          name: courseName,
+          semester: {
+            batchId: batch.id,
+          },
+        },
+        include: {
+          semester: true,
+        },
+      });
+      if (!course) {
+        throw new Error(`Course not found: ${courseName} in batch ${batchName}`);
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const newTeacher = await prisma.teacher.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          gender,
+          phoneNumber,
+          experience,
+          centerId: center.id,
+          departmentId: department.id,
+          batches: {
+            connect: { id: batch.id },
+          },
+          courses: {
+            connect: { id: course.id },
+          },
+        },
+      });
+
+      createdTeachers.push(newTeacher);
+    }
+
+     res.status(201).json({
+      success: true,
+      message: "Teachers added successfully",
+      data: createdTeachers,
+    });
+    return;
+  } catch (error: any) {
+    console.error("Error adding teachers:", error);
+     res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong",
+    });
+    return;
+  }
+}
 
 async function getTeacherProfile(req: Request, res: Response) {
   try {
@@ -439,4 +574,4 @@ async function deleteTeacher (req: Request, res: Response){
   }
 };
 
-export { getTeacherProfile, getTeachingDetails, getStudentProfile,getTeachersByCenter,updateTeacher,deleteTeacher };
+export { addTeacher,getTeacherProfile, getTeachingDetails, getStudentProfile,getTeachersByCenter,updateTeacher,deleteTeacher };

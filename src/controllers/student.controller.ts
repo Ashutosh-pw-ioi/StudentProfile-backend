@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import { prisma } from "../db/prisma.js";
 import { DepartmentType } from "@prisma/client";
 import { parseStudentExcel } from "../utils/parseStudentExcel.js";
@@ -46,7 +47,6 @@ async function addStudent(req: Request, res: Response) {
       } = row;
 
       const center = await prisma.center.findUnique({ where: { name: centerName } });
-
       if (!center) {
          res.status(400).json({ success: false, message: `Center '${centerName}' not found.` });
          return;
@@ -108,11 +108,13 @@ async function addStudent(req: Request, res: Response) {
         select: { id: true },
       });
 
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       const newStudent = await prisma.student.create({
         data: {
           name,
           email,
-          password,
+          password: hashedPassword,
           gender,
           phoneNumber,
           enrollmentNumber,

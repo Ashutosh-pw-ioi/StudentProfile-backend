@@ -8,10 +8,13 @@ import {
   getTeachersByCenter,
   updateTeacher,
   deleteTeacher,
+  addTeacher,
 } from "../controllers/teacher.controller.js";
+import { uploadExcel } from "../middlewares/uploadExcel.js";
 
 const teacherRouter = Router();
 
+teacherRouter.post("/add-teacher",authAdmin, uploadExcel.single("file"), addTeacher);
 teacherRouter.get("/teacher-profile", authTeacher, getTeacherProfile);
 teacherRouter.get("/teacher-academics", authTeacher, getTeachingDetails);
 teacherRouter.get("/student-profile/:id", getStudentProfile);
