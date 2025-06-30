@@ -5,7 +5,7 @@ CREATE TYPE "Role" AS ENUM ('ADMIN', 'SUPER_ADMIN', 'MODERATOR');
 CREATE TYPE "DepartmentType" AS ENUM ('SOT', 'SOM', 'SOH');
 
 -- CreateEnum
-CREATE TYPE "ScoreType" AS ENUM ('FORTNIGHTLY_TEST', 'ASSIGNMENT', 'MID_SEM', 'END_SEM');
+CREATE TYPE "ScoreType" AS ENUM ('FORTNIGHTLY_TEST', 'ASSIGNMENT', 'MID_SEM', 'END_SEM', 'INTERVIEW');
 
 -- CreateTable
 CREATE TABLE "centers" (
@@ -103,8 +103,11 @@ CREATE TABLE "students" (
 -- CreateTable
 CREATE TABLE "course_scores" (
     "id" TEXT NOT NULL,
-    "marks" DOUBLE PRECISION NOT NULL,
-    "scoreType" "ScoreType" NOT NULL,
+    "marksObtained" DOUBLE PRECISION NOT NULL,
+    "totalObtained" DOUBLE PRECISION NOT NULL,
+    "dateOfExam" TIMESTAMP(3) NOT NULL,
+    "scoreType" TEXT NOT NULL,
+    "name" "ScoreType" NOT NULL,
     "gradedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "studentId" TEXT NOT NULL,
@@ -120,10 +123,19 @@ CREATE TABLE "admins" (
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "role" "Role" NOT NULL DEFAULT 'ADMIN',
+    "centerId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "admins_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "_BatchTeachers" (
+    "A" TEXT NOT NULL,
+    "B" TEXT NOT NULL,
+
+    CONSTRAINT "_BatchTeachers_AB_pkey" PRIMARY KEY ("A","B")
 );
 
 -- CreateTable
@@ -173,6 +185,9 @@ CREATE UNIQUE INDEX "course_scores_studentId_courseId_scoreType_key" ON "course_
 CREATE UNIQUE INDEX "admins_email_key" ON "admins"("email");
 
 -- CreateIndex
+CREATE INDEX "_BatchTeachers_B_index" ON "_BatchTeachers"("B");
+
+-- CreateIndex
 CREATE INDEX "_CourseTeachers_B_index" ON "_CourseTeachers"("B");
 
 -- CreateIndex
@@ -210,6 +225,15 @@ ALTER TABLE "course_scores" ADD CONSTRAINT "course_scores_studentId_fkey" FOREIG
 
 -- AddForeignKey
 ALTER TABLE "course_scores" ADD CONSTRAINT "course_scores_courseId_fkey" FOREIGN KEY ("courseId") REFERENCES "courses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "admins" ADD CONSTRAINT "admins_centerId_fkey" FOREIGN KEY ("centerId") REFERENCES "centers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_BatchTeachers" ADD CONSTRAINT "_BatchTeachers_A_fkey" FOREIGN KEY ("A") REFERENCES "batches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "_BatchTeachers" ADD CONSTRAINT "_BatchTeachers_B_fkey" FOREIGN KEY ("B") REFERENCES "teachers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "_CourseTeachers" ADD CONSTRAINT "_CourseTeachers_A_fkey" FOREIGN KEY ("A") REFERENCES "courses"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -13,6 +13,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
+      userRole?: string;
     }
   }
 }
@@ -51,7 +52,7 @@ const authStudent = async (req: Request, res: Response, next: NextFunction) => {
     }
     
     req.userId = decodedToken.id;
-    
+    req.userRole = decodedToken.role;
     next();
     
   } catch (error) {
@@ -104,7 +105,8 @@ const authTeacher = async (req: Request, res: Response, next: NextFunction) => {
     }
     
     req.userId = decodedToken.id;
-    
+        req.userRole = decodedToken.role;
+
     next();
     
   } catch (error) {
@@ -125,54 +127,57 @@ const authTeacher = async (req: Request, res: Response, next: NextFunction) => {
 
 const authAdmin = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { token } = req.headers as { token?: string };    
+    const { token } = req.headers as { token?: string };
+
     if (!token) {
-      res.status(401).json({ 
-        success: false, 
-        message: "No token, authorization denied" 
+       res.status(401).json({
+        success: false,
+        message: "No token, authorization denied"
       });
       return;
     }
 
     const decodedToken = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
-    
+
     const admin = await prisma.admin.findUnique({
       where: { id: decodedToken.id }
     });
 
     if (!admin) {
-      res.status(404).json({ 
-        success: false, 
-        message: "Admin not found" 
+       res.status(404).json({
+        success: false,
+        message: "Admin not found"
       });
       return;
     }
 
-    if (decodedToken.role !== 'ADMIN') {
-      res.status(403).json({ 
-        success: false, 
-        message: "Access denied. Admin role required." 
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'SUPER_ADMIN') {
+       res.status(403).json({
+        success: false,
+        message: "Access denied. Admin or Super Admin role required."
       });
       return;
     }
-    
+
     req.userId = decodedToken.id;
-    
+    req.userRole = decodedToken.role;
+
     next();
-    
   } catch (error) {
-    console.log(error);
+    console.error(error);
     if (error instanceof jwt.JsonWebTokenError) {
-      res.status(401).json({ 
-        success: false, 
-        message: "Invalid token" 
+       res.status(401).json({
+        success: false,
+        message: "Invalid token"
       });
       return;
     }
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error" 
+
+    res.status(500).json({
+      success: false,
+      message: "Server error"
     });
+    return;
   }
 };
 
@@ -210,7 +215,8 @@ const authSuperAdmin = async (req: Request, res: Response, next: NextFunction) =
     }
     
     req.userId = decodedToken.id;
-    
+    req.userRole = decodedToken.role;
+
     next();
     
   } catch (error) {

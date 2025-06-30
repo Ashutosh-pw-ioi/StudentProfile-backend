@@ -1,7 +1,149 @@
 import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import { prisma } from "../db/prisma.js";
+import { DepartmentType } from "@prisma/client";
+import { parseStudentExcel } from "../utils/parseStudentExcel.js";
 
-// Get student Personal Details by ID
+async function addStudent(req: Request, res: Response) {
+  try {
+    const userRole = req.userRole as string;
+    const adminId = req.userId as string;
+
+    if (!req.file) {
+       res.status(400).json({ success: false, message: "No Excel file uploaded" });
+       return;
+    }
+
+    let adminCenterId: string | null = null;
+
+    if (userRole === "ADMIN") {
+      const admin = await prisma.admin.findUnique({
+        where: { id: adminId },
+        select: { centerId: true },
+      });
+
+      if (!admin) {
+         res.status(403).json({ success: false, message: "Admin not found" });
+         return;
+      }
+
+      adminCenterId = admin.centerId;
+    }
+
+    const studentRows = parseStudentExcel(req.file.buffer);
+    const createdStudents = [];
+
+    for (const row of studentRows) {
+      const {
+        name,
+        email,
+        password,
+        gender,
+        phoneNumber,
+        enrollmentNumber,
+        center: centerName,
+        department,
+        batch: batchName,
+      } = row;
+
+      const center = await prisma.center.findUnique({ where: { name: centerName } });
+      if (!center) {
+         res.status(400).json({ success: false, message: `Center '${centerName}' not found.` });
+         return;
+      }
+
+      if (userRole === "ADMIN" && center.id !== adminCenterId) {
+         res.status(403).json({
+          success: false,
+          message: `You are not authorized to add students to center '${centerName}'.`,
+        });
+        return;
+      }
+
+      const departmentEnum = department as DepartmentType;
+
+      const departmentObj = await prisma.department.findUnique({
+        where: {
+          centerId_name: {
+            centerId: center.id,
+            name: departmentEnum,
+          },
+        },
+      });
+
+      if (!departmentObj) {
+         res.status(400).json({
+          success: false,
+          message: `Department '${department}' not found in center '${centerName}'`,
+        });
+        return;
+      }
+
+      const batch = await prisma.batch.findUnique({
+        where: {
+          departmentId_name: {
+            departmentId: departmentObj.id,
+            name: batchName,
+          },
+        },
+      });
+
+      if (!batch) {
+         res.status(400).json({
+          success: false,
+          message: `Batch '${batchName}' not found in department '${department}'`,
+        });
+        return;
+      }
+
+      const semesterNo = 1;
+
+      const courses = await prisma.course.findMany({
+        where: {
+          semester: {
+            batchId: batch.id,
+            number: semesterNo,
+          },
+        },
+        select: { id: true },
+      });
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const newStudent = await prisma.student.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          gender,
+          phoneNumber,
+          enrollmentNumber,
+          semesterNo,
+          centerId: center.id,
+          departmentId: departmentObj.id,
+          batchId: batch.id,
+          courses: {
+            connect: courses.map((c) => ({ id: c.id })),
+          },
+        },
+      });
+
+      createdStudents.push(newStudent);
+    }
+
+     res.status(201).json({
+      success: true,
+      message: `${createdStudents.length} student(s) added successfully.`,
+      data: createdStudents,
+    });
+    return;
+  } catch (err) {
+    console.error("Error adding students:", err);
+     res.status(500).json({ success: false, message: "Internal server error" });
+     return;
+  }
+}
+
 async function getStudentDetails(req: Request, res: Response) {
   try {
     const id = req.userId;
@@ -75,7 +217,6 @@ async function getStudentDetails(req: Request, res: Response) {
   }
 }
 
-// Get student academic records (courses and marks) by ID
 async function getStudentAcademicDetails(req: Request, res: Response) {
   try {
     const id = req.userId;
@@ -104,7 +245,7 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
         scores: {
           select: {
             id: true,
-            marks: true,
+            marksObtained: true,
             scoreType: true,
             course: {
               select: {
@@ -142,67 +283,78 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
   }
 }
 
-// Get marks of all students in a particular center's department's batch
 async function getStudentMarksByBatch(req: Request, res: Response) {
   try {
-    const studentId = req.userId;
+    const studentId = req.userId as string;
 
     if (!studentId) {
-      res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "Student ID is required",
       });
       return;
     }
 
-    // First, get the student's details to find their center, department, and batch
     const referenceStudent = await prisma.student.findUnique({
       where: { id: studentId },
       select: {
+        id: true,
         centerId: true,
-        departmentId: true,
         batchId: true,
-        center: { select: { name: true, location: true } },
+        center: { select: { name: true } },
         department: { select: { name: true } },
         batch: { select: { name: true } },
       },
     });
 
     if (!referenceStudent) {
-      res.status(404).json({
+       res.status(404).json({
         success: false,
         message: "Student not found",
       });
       return;
     }
 
-    const studentsWithMarks = await prisma.student.findMany({
+    const students = await prisma.student.findMany({
       where: {
         centerId: referenceStudent.centerId,
-        departmentId: referenceStudent.departmentId,
         batchId: referenceStudent.batchId,
       },
       select: {
+        id: true,
         name: true,
         email: true,
         enrollmentNumber: true,
         scores: {
           select: {
-            marks: true,
+            marksObtained: true,
             scoreType: true,
-            course: {
-              select: {
-                name: true,
-              },
-            },
+            course: { select: { name: true } },
           },
-          orderBy: [{ course: { name: "asc" } }, { scoreType: "asc" }],
         },
       },
-      orderBy: {
-        enrollmentNumber: "asc",
-      },
     });
+
+    const studentsWithTotal = students.map((student) => {
+      const totalMarks = student.scores.reduce(
+        (sum, score) => sum + score.marksObtained,
+        0
+      );
+      const { scores, ...rest } = student;
+      return {
+        ...rest,
+        totalMarks,
+      };
+    });
+
+    studentsWithTotal.sort((a, b) => b.totalMarks - a.totalMarks);
+
+    const rankedStudents = studentsWithTotal.map((student, index) => ({
+      ...student,
+      rank: index + 1,
+    }));
+
+    const currentStudent = rankedStudents.find((s) => s.id === studentId);
 
     res.status(200).json({
       success: true,
@@ -210,8 +362,10 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         center: referenceStudent.center,
         department: referenceStudent.department,
         batch: referenceStudent.batch,
-        students: studentsWithMarks,
-        totalStudents: studentsWithMarks.length,
+        studentRank: currentStudent?.rank ?? null,
+        studentTotalMarks: currentStudent?.totalMarks ?? 0,
+        students: rankedStudents,
+        totalStudents: rankedStudents.length,
       },
     });
     return;
@@ -225,97 +379,94 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
   }
 }
 
-// Get marks of all students in a department across all centers
 async function getStudentMarksByDepartment(req: Request, res: Response) {
   try {
-    const studentId = req.userId;
+    const studentId = req.userId as string;
 
     if (!studentId) {
-      res.status(400).json({
+       res.status(400).json({
         success: false,
         message: "Student ID is required",
       });
       return;
     }
 
-    // First, get the student's department details
     const referenceStudent = await prisma.student.findUnique({
       where: { id: studentId },
       select: {
+        id: true,
+        center: { select: { name: true } },
         department: { select: { name: true } },
       },
     });
 
     if (!referenceStudent) {
-      res.status(404).json({
+       res.status(404).json({
         success: false,
         message: "Student not found",
       });
       return;
     }
 
-    const studentsWithMarks = await prisma.student.findMany({
+    const departmentName = referenceStudent.department.name;
+
+    const allStudents = await prisma.student.findMany({
       where: {
-        department: {
-          name: referenceStudent.department.name,
-        },
+        department: { name: departmentName },
       },
       select: {
+        id: true,
         name: true,
-        email: true,
         enrollmentNumber: true,
         semesterNo: true,
-        center: {
-          select: {
-            location: true,
-          },
-        },
-        batch: {
-          select: {
-            name: true,
-          },
-        },
+        center: { select: { name: true } },
+        department: { select: { name: true } },
         scores: {
           select: {
-            marks: true,
+            marksObtained: true,
             scoreType: true,
-            course: {
-              select: {
-                name: true,
-              },
-            },
+            course: { select: { name: true } },
           },
-          orderBy: [{ course: { name: "asc" } }, { scoreType: "asc" }],
         },
       },
-      orderBy: [{ center: { name: "asc" } }, { enrollmentNumber: "asc" }],
     });
 
-    // Group students by center for better organization
-    const studentsByCenter = studentsWithMarks.reduce((acc, student) => {
-      const centerName = student.center.location;
-      if (!acc[centerName]) {
-        acc[centerName] = {
-          center: student.center,
-          students: [],
-        };
-      }
-      acc[centerName].students.push(student);
-      return acc;
-    }, {} as Record<string, { center: any; students: any[] }>);
+    const studentsWithTotalMarks = allStudents.map((student) => {
+      const totalMarks = student.scores.reduce(
+        (sum, score) => sum + score.marksObtained,
+        0
+      );
+      const { scores, ...rest } = student;
+      return {
+        ...rest,
+        totalMarks,
+      };
+    });
+
+    studentsWithTotalMarks.sort((a, b) => b.totalMarks - a.totalMarks);
+
+    const rankedStudents = studentsWithTotalMarks.map((student, index) => ({
+      ...student,
+      rank: index + 1,
+    }));
+
+    const you = rankedStudents.find((s) => s.id === studentId);
 
     res.status(200).json({
       success: true,
       data: {
-        departmentName: referenceStudent.department.name,
-        centerData: Object.values(studentsByCenter),
-        totalStudents: studentsWithMarks.length,
-        totalCenters: Object.keys(studentsByCenter).length,
+        department: departmentName,
+        totalStudents: rankedStudents.length,
+        yourRank: you?.rank ?? null,
+        yourTotalMarks: you?.totalMarks ?? null,
+        yourCenter: referenceStudent.center,
+        yourDepartment: referenceStudent.department,
+        students: rankedStudents,
       },
     });
     return;
   } catch (error) {
-    console.error("Error fetching student marks by department:", error);
+    console.error("Error fetching student ranks by department:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -324,9 +475,220 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
   }
 }
 
+async function getStudentsByCenter(req: Request, res: Response) {
+  try {
+    const userId = req.userId as string;
+    const userRole = req.userRole as string;
+
+    let centerId: string;
+
+    if (userRole === "ADMIN") {
+      // Fetch centerId using adminId
+      const admin = await prisma.admin.findUnique({
+        where: { id: userId },
+        select: { centerId: true },
+      });
+
+      if (!admin) {
+         res.status(404).json({
+          success: false,
+          message: "Admin not found",
+        });
+        return;
+      }
+
+      centerId = admin.centerId;
+
+    } else if (userRole === "SUPER_ADMIN") {
+      const { centerName } = req.body;
+
+      if (!centerName) {
+         res.status(400).json({
+          success: false,
+          message: "Center name is required for Super Admin",
+        });
+        return;
+      }
+
+      const center = await prisma.center.findUnique({
+        where: { name: centerName },
+      });
+
+      if (!center) {
+         res.status(404).json({
+          success: false,
+          message: "Center not found",
+        });
+        return;
+      }
+
+      centerId = center.id;
+
+    } else {
+       res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+      return;
+    }
+
+    // Fetch students for the centerId
+    const students = await prisma.student.findMany({
+      where: { centerId },
+      select: {
+        id: true,
+        name: true,
+        enrollmentNumber: true,
+        email: true,
+        semesterNo: true,
+        center: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true } },
+        batch: { select: { id: true, name: true } },
+      },
+    });
+
+    const totalCount = await prisma.student.count({ where: { centerId } });
+
+     res.status(200).json({
+      success: true,
+      totalCount,
+      students,
+    });
+    return;
+
+  } catch (error) {
+    console.error("Error fetching students:", error);
+     res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+    return;
+  }
+}
+
+async function editStudent(req: Request, res: Response) {
+  try {
+    const {
+      id,
+      centerName,
+      depName,
+      batchName,
+      name,
+      gender,
+      phoneNumber,
+      semesterNo,
+      password,
+    } = req.body;
+
+    const center = await prisma.center.findUnique({ where: { name: centerName } });
+    if (!center) {
+       res.status(404).json({ success: false, message: "Center not found" });
+       return;
+    }
+
+    const department = await prisma.department.findFirst({
+      where: { name: depName, centerId: center.id },
+    });
+    if (!department) {
+       res.status(404).json({ success: false, message: "Department not found" });
+       return;
+    }
+
+    const batch = await prisma.batch.findFirst({
+      where: { name: batchName, departmentId: department.id },
+    });
+    if (!batch) {
+       res.status(404).json({ success: false, message: "Batch not found" });
+       return;
+    }
+
+    const student = await prisma.student.findUnique({ where: { id } });
+    if (!student) {
+       res.status(404).json({ success: false, message: "Student not found" });
+       return;
+    }
+
+    // 🧠 Find the semester in the selected batch
+    const semester = await prisma.semester.findFirst({
+      where: {
+        batchId: batch.id,
+        number: semesterNo,
+      },
+    });
+
+    if (!semester) {
+       res.status(404).json({ success: false, message: "Semester not found for batch" });
+       return;
+    }
+
+    const courses = await prisma.course.findMany({
+      where: {
+        semesterId: semester.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const courseIds = courses.map(course => ({ id: course.id }));
+
+    const updatedStudent = await prisma.student.update({
+      where: { id },
+      data: {
+        name,
+        gender,
+        phoneNumber,
+        semesterNo,
+        password,
+        centerId: center.id,
+        departmentId: department.id,
+        batchId: batch.id,
+        courses: {
+          set: courseIds, // this will replace old courses with new semester courses
+        },
+      },
+    });
+
+     res.status(200).json({
+      success: true,
+      message: "Student updated successfully and courses refreshed.",
+      student: updatedStudent,
+    });
+    return;
+  } catch (error) {
+    console.error("Edit student error:", error);
+     res.status(500).json({ success: false, message: "Server error" });
+     return;
+  }
+}
+
+async function deleteStudent (req: Request, res: Response) {
+  try {
+    const { id } = req.body;
+
+    const student = await prisma.student.findUnique({ where: { id: id } });
+    if (!student) {
+       res.status(404).json({ success: false, message: "Student not found" });
+       return;
+    }
+
+    await prisma.student.delete({ where: { id: id } });
+
+     res.status(200).json({ success: true, message: "Student deleted successfully" });
+     return;
+  } catch (error) {
+    console.error("Delete student error:", error);
+     res.status(500).json({ success: false, message: "Server error" });
+     return;
+  }
+};
+
 export {
+  addStudent,
   getStudentDetails,
   getStudentAcademicDetails,
   getStudentMarksByBatch,
   getStudentMarksByDepartment,
+  getStudentsByCenter,editStudent,
+  deleteStudent
 };
