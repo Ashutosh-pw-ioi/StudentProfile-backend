@@ -14,7 +14,7 @@ const adminRouter = express.Router();
 adminRouter.get("/departments",authSuperAdmin, listCenterDepartments);
 adminRouter.post("/create",authSuperAdmin, createAdmin);
 adminRouter.get("/all",authSuperAdmin, getAllAdmins);
-adminRouter.post("/get",authSuperAdmin, getAdminById);
+adminRouter.post("/get", getAdminById);
 adminRouter.put("/update",authSuperAdmin, updateAdmin);
 adminRouter.delete("/delete",authSuperAdmin, deleteAdmin);
 

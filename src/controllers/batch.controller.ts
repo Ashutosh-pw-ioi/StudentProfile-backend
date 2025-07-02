@@ -5,6 +5,8 @@ const prisma = new PrismaClient();
 
 async function createBatch(req: Request, res: Response) {
   try {
+    const adminId = req.userId;
+    const userRole = req.userRole;
     const { centerName, depName, batchName } = req.body;
 
     if (!centerName || !depName || !batchName) {
@@ -25,6 +27,28 @@ async function createBatch(req: Request, res: Response) {
         message: "Center not found",
       });
       return;
+    }
+
+    if (userRole === "ADMIN") {
+      const admin = await prisma.admin.findUnique({
+        where: { id: adminId },
+      });
+
+      if (!admin) {
+         res.status(401).json({
+          success: false,
+          message: "Admin not found",
+        });
+        return;
+      }
+
+      if (admin.centerId !== center.id) {
+         res.status(403).json({
+          success: false,
+          message: "You are not authorized to add batches to this center",
+        });
+        return;
+      }
     }
 
     const department = await prisma.department.findFirst({
@@ -66,7 +90,7 @@ async function createBatch(req: Request, res: Response) {
       },
     });
 
-    res.status(201).json({
+     res.status(201).json({
       success: true,
       message: "Batch created successfully",
       data: newBatch,
@@ -74,10 +98,15 @@ async function createBatch(req: Request, res: Response) {
     return;
   } catch (error) {
     console.error("Create Batch Error:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+     res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
     return;
   }
 }
+
+
 async function getBatchesByCenter(req: Request, res: Response) {
   try {
     const userId = req.userId as string;

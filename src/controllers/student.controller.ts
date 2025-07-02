@@ -10,8 +10,10 @@ async function addStudent(req: Request, res: Response) {
     const adminId = req.userId as string;
 
     if (!req.file) {
-       res.status(400).json({ success: false, message: "No Excel file uploaded" });
-       return;
+      res
+        .status(400)
+        .json({ success: false, message: "No Excel file uploaded" });
+      return;
     }
 
     let adminCenterId: string | null = null;
@@ -23,8 +25,8 @@ async function addStudent(req: Request, res: Response) {
       });
 
       if (!admin) {
-         res.status(403).json({ success: false, message: "Admin not found" });
-         return;
+        res.status(403).json({ success: false, message: "Admin not found" });
+        return;
       }
 
       adminCenterId = admin.centerId;
@@ -46,14 +48,19 @@ async function addStudent(req: Request, res: Response) {
         batch: batchName,
       } = row;
 
-      const center = await prisma.center.findUnique({ where: { name: centerName } });
+      const center = await prisma.center.findUnique({
+        where: { name: centerName },
+      });
       if (!center) {
-         res.status(400).json({ success: false, message: `Center '${centerName}' not found.` });
-         return;
+        res.status(400).json({
+          success: false,
+          message: `Center '${centerName}' not found.`,
+        });
+        return;
       }
 
       if (userRole === "ADMIN" && center.id !== adminCenterId) {
-         res.status(403).json({
+        res.status(403).json({
           success: false,
           message: `You are not authorized to add students to center '${centerName}'.`,
         });
@@ -72,7 +79,7 @@ async function addStudent(req: Request, res: Response) {
       });
 
       if (!departmentObj) {
-         res.status(400).json({
+        res.status(400).json({
           success: false,
           message: `Department '${department}' not found in center '${centerName}'`,
         });
@@ -89,7 +96,7 @@ async function addStudent(req: Request, res: Response) {
       });
 
       if (!batch) {
-         res.status(400).json({
+        res.status(400).json({
           success: false,
           message: `Batch '${batchName}' not found in department '${department}'`,
         });
@@ -131,7 +138,7 @@ async function addStudent(req: Request, res: Response) {
       createdStudents.push(newStudent);
     }
 
-     res.status(201).json({
+    res.status(201).json({
       success: true,
       message: `${createdStudents.length} student(s) added successfully.`,
       data: createdStudents,
@@ -139,8 +146,8 @@ async function addStudent(req: Request, res: Response) {
     return;
   } catch (err) {
     console.error("Error adding students:", err);
-     res.status(500).json({ success: false, message: "Internal server error" });
-     return;
+    res.status(500).json({ success: false, message: "Internal server error" });
+    return;
   }
 }
 
@@ -283,14 +290,68 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
   }
 }
 
+async function getScoreGraph(req: Request, res: Response) {
+  try {
+    const userId = req.userId;
+    const { courseCode, scoreType } = req.body;
+
+    if (!userId || !courseCode || !scoreType) {
+      res.status(400).json({ message: "Missing required fields" });
+      return;
+    }
+
+    const course = await prisma.course.findFirst({
+      where: {
+        code: courseCode,
+        students: {
+          some: {
+            id: userId,
+          },
+        },
+      },
+    });
+
+    if (!course) {
+      res.status(404).json({ message: "Course not found for student" });
+      return;
+    }
+
+    const scores = await prisma.courseScore.findMany({
+      where: {
+        studentId: userId,
+        courseId: course.id,
+        name: scoreType,
+      },
+      orderBy: {
+        dateOfExam: "asc",
+      },
+      select: {
+        id: true,
+        marksObtained: true,
+        totalObtained: true,
+        dateOfExam: true,
+        gradedAt: true,
+      },
+    });
+
+    res.status(200).json({ scores });
+    return;
+  } catch (err) {
+    console.error("Error in getScoreGraph:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+    return;
+  }
+}
+
 async function getStudentMarksByBatch(req: Request, res: Response) {
   try {
     const studentId = req.userId as string;
+    const { courseCode, scoreType } = req.body;
 
-    if (!studentId) {
-       res.status(400).json({
+    if (!studentId || !courseCode || !scoreType) {
+      res.status(400).json({
         success: false,
-        message: "Student ID is required",
+        message: "studentId, courseCode, and scoreType are required",
       });
       return;
     }
@@ -308,12 +369,37 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
     });
 
     if (!referenceStudent) {
-       res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Student not found",
       });
       return;
     }
+
+    const semester = await prisma.semester.findFirst({
+      where: { batchId: referenceStudent.batchId },
+      include: { courses: true },
+    });
+
+    if (!semester) {
+      res.status(404).json({
+        success: false,
+        message: "No semester found for this batch",
+      });
+      return;
+    }
+
+    const course = semester.courses.find((c) => c.code === courseCode);
+
+    if (!course) {
+      res.status(404).json({
+        success: false,
+        message: "Course not found for the provided courseCode in this batch",
+      });
+      return;
+    }
+
+    const courseId = course.id;
 
     const students = await prisma.student.findMany({
       where: {
@@ -326,10 +412,12 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         email: true,
         enrollmentNumber: true,
         scores: {
+          where: {
+            courseId: courseId,
+            name: scoreType,
+          },
           select: {
             marksObtained: true,
-            scoreType: true,
-            course: { select: { name: true } },
           },
         },
       },
@@ -362,31 +450,32 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         center: referenceStudent.center,
         department: referenceStudent.department,
         batch: referenceStudent.batch,
+        course: { name: course.name, code: course.code },
+        scoreType,
         studentRank: currentStudent?.rank ?? null,
         studentTotalMarks: currentStudent?.totalMarks ?? 0,
         students: rankedStudents,
         totalStudents: rankedStudents.length,
       },
     });
-    return;
   } catch (error) {
-    console.error("Error fetching student marks by batch:", error);
+    console.error("Error fetching leaderboard:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
     });
-    return;
   }
 }
 
 async function getStudentMarksByDepartment(req: Request, res: Response) {
   try {
     const studentId = req.userId as string;
+    const { courseCode, scoreType } = req.body;
 
-    if (!studentId) {
-       res.status(400).json({
+    if (!studentId || !courseCode || !scoreType) {
+      res.status(400).json({
         success: false,
-        message: "Student ID is required",
+        message: "studentId, courseCode, and scoreType are required",
       });
       return;
     }
@@ -395,13 +484,13 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
       where: { id: studentId },
       select: {
         id: true,
-        center: { select: { name: true } },
         department: { select: { name: true } },
+        center: { select: { name: true } },
       },
     });
 
     if (!referenceStudent) {
-       res.status(404).json({
+      res.status(404).json({
         success: false,
         message: "Student not found",
       });
@@ -410,28 +499,59 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
 
     const departmentName = referenceStudent.department.name;
 
-    const allStudents = await prisma.student.findMany({
+    const semesters = await prisma.semester.findMany({
+      where: {
+        batch: {
+          department: {
+            name: departmentName,
+          },
+        },
+      },
+      include: {
+        courses: true,
+      },
+    });
+
+    const course = semesters
+      .flatMap((semester) => semester.courses)
+      .find((c) => c.code === courseCode);
+
+    if (!course) {
+      res.status(404).json({
+        success: false,
+        message:
+          "Course not found for the provided courseCode in this department",
+      });
+      return;
+    }
+
+    const courseId = course.id;
+
+    const students = await prisma.student.findMany({
       where: {
         department: { name: departmentName },
       },
       select: {
         id: true,
         name: true,
+        email: true,
         enrollmentNumber: true,
         semesterNo: true,
         center: { select: { name: true } },
         department: { select: { name: true } },
         scores: {
+          where: {
+            courseId: courseId,
+            name: scoreType,
+          },
           select: {
             marksObtained: true,
-            scoreType: true,
-            course: { select: { name: true } },
           },
         },
       },
     });
 
-    const studentsWithTotalMarks = allStudents.map((student) => {
+    const studentsWithTotal = students.map((student) => {
       const totalMarks = student.scores.reduce(
         (sum, score) => sum + score.marksObtained,
         0
@@ -443,22 +563,24 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
       };
     });
 
-    studentsWithTotalMarks.sort((a, b) => b.totalMarks - a.totalMarks);
+    studentsWithTotal.sort((a, b) => b.totalMarks - a.totalMarks);
 
-    const rankedStudents = studentsWithTotalMarks.map((student, index) => ({
+    const rankedStudents = studentsWithTotal.map((student, index) => ({
       ...student,
       rank: index + 1,
     }));
 
-    const you = rankedStudents.find((s) => s.id === studentId);
+    const currentStudent = rankedStudents.find((s) => s.id === studentId);
 
     res.status(200).json({
       success: true,
       data: {
         department: departmentName,
+        course: { name: course.name, code: course.code },
+        scoreType,
         totalStudents: rankedStudents.length,
-        yourRank: you?.rank ?? null,
-        yourTotalMarks: you?.totalMarks ?? null,
+        yourRank: currentStudent?.rank ?? null,
+        yourTotalMarks: currentStudent?.totalMarks ?? 0,
         yourCenter: referenceStudent.center,
         yourDepartment: referenceStudent.department,
         students: rankedStudents,
@@ -466,7 +588,7 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
     });
     return;
   } catch (error) {
-    console.error("Error fetching student ranks by department:", error);
+    console.error("Error fetching department leaderboard:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -490,7 +612,7 @@ async function getStudentsByCenter(req: Request, res: Response) {
       });
 
       if (!admin) {
-         res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Admin not found",
         });
@@ -498,12 +620,11 @@ async function getStudentsByCenter(req: Request, res: Response) {
       }
 
       centerId = admin.centerId;
-
     } else if (userRole === "SUPER_ADMIN") {
       const { centerName } = req.body;
 
       if (!centerName) {
-         res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Center name is required for Super Admin",
         });
@@ -515,7 +636,7 @@ async function getStudentsByCenter(req: Request, res: Response) {
       });
 
       if (!center) {
-         res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Center not found",
         });
@@ -523,9 +644,8 @@ async function getStudentsByCenter(req: Request, res: Response) {
       }
 
       centerId = center.id;
-
     } else {
-       res.status(403).json({
+      res.status(403).json({
         success: false,
         message: "Unauthorized role",
       });
@@ -549,16 +669,15 @@ async function getStudentsByCenter(req: Request, res: Response) {
 
     const totalCount = await prisma.student.count({ where: { centerId } });
 
-     res.status(200).json({
+    res.status(200).json({
       success: true,
       totalCount,
       students,
     });
     return;
-
   } catch (error) {
     console.error("Error fetching students:", error);
-     res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Internal Server Error",
     });
@@ -580,32 +699,34 @@ async function editStudent(req: Request, res: Response) {
       password,
     } = req.body;
 
-    const center = await prisma.center.findUnique({ where: { name: centerName } });
+    const center = await prisma.center.findUnique({
+      where: { name: centerName },
+    });
     if (!center) {
-       res.status(404).json({ success: false, message: "Center not found" });
-       return;
+      res.status(404).json({ success: false, message: "Center not found" });
+      return;
     }
 
     const department = await prisma.department.findFirst({
       where: { name: depName, centerId: center.id },
     });
     if (!department) {
-       res.status(404).json({ success: false, message: "Department not found" });
-       return;
+      res.status(404).json({ success: false, message: "Department not found" });
+      return;
     }
 
     const batch = await prisma.batch.findFirst({
       where: { name: batchName, departmentId: department.id },
     });
     if (!batch) {
-       res.status(404).json({ success: false, message: "Batch not found" });
-       return;
+      res.status(404).json({ success: false, message: "Batch not found" });
+      return;
     }
 
     const student = await prisma.student.findUnique({ where: { id } });
     if (!student) {
-       res.status(404).json({ success: false, message: "Student not found" });
-       return;
+      res.status(404).json({ success: false, message: "Student not found" });
+      return;
     }
 
     // 🧠 Find the semester in the selected batch
@@ -617,8 +738,10 @@ async function editStudent(req: Request, res: Response) {
     });
 
     if (!semester) {
-       res.status(404).json({ success: false, message: "Semester not found for batch" });
-       return;
+      res
+        .status(404)
+        .json({ success: false, message: "Semester not found for batch" });
+      return;
     }
 
     const courses = await prisma.course.findMany({
@@ -630,7 +753,7 @@ async function editStudent(req: Request, res: Response) {
       },
     });
 
-    const courseIds = courses.map(course => ({ id: course.id }));
+    const courseIds = courses.map((course) => ({ id: course.id }));
 
     const updatedStudent = await prisma.student.update({
       where: { id },
@@ -649,7 +772,7 @@ async function editStudent(req: Request, res: Response) {
       },
     });
 
-     res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Student updated successfully and courses refreshed.",
       student: updatedStudent,
@@ -657,38 +780,42 @@ async function editStudent(req: Request, res: Response) {
     return;
   } catch (error) {
     console.error("Edit student error:", error);
-     res.status(500).json({ success: false, message: "Server error" });
-     return;
+    res.status(500).json({ success: false, message: "Server error" });
+    return;
   }
 }
 
-async function deleteStudent (req: Request, res: Response) {
+async function deleteStudent(req: Request, res: Response) {
   try {
     const { id } = req.body;
 
     const student = await prisma.student.findUnique({ where: { id: id } });
     if (!student) {
-       res.status(404).json({ success: false, message: "Student not found" });
-       return;
+      res.status(404).json({ success: false, message: "Student not found" });
+      return;
     }
 
     await prisma.student.delete({ where: { id: id } });
 
-     res.status(200).json({ success: true, message: "Student deleted successfully" });
-     return;
+    res
+      .status(200)
+      .json({ success: true, message: "Student deleted successfully" });
+    return;
   } catch (error) {
     console.error("Delete student error:", error);
-     res.status(500).json({ success: false, message: "Server error" });
-     return;
+    res.status(500).json({ success: false, message: "Server error" });
+    return;
   }
-};
+}
 
 export {
   addStudent,
   getStudentDetails,
   getStudentAcademicDetails,
+  getScoreGraph,
   getStudentMarksByBatch,
   getStudentMarksByDepartment,
-  getStudentsByCenter,editStudent,
-  deleteStudent
+  getStudentsByCenter,
+  editStudent,
+  deleteStudent,
 };
