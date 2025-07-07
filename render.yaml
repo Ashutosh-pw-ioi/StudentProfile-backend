@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: my-backend-api
+    env: node
+    plan: free
+    branch: production
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: POSTGRES_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: API_KEY
+        value: your-api-key-here
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
