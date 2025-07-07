@@ -12,6 +12,7 @@ const courseRouter = Router();
 
 courseRouter.post("/create",authAdmin, createCourse);
 courseRouter.get("/all",authAdmin, getAllCourses);
+courseRouter.post("/all",authAdmin, getAllCourses);
 courseRouter.get("/:id",authAdmin, getCourseById);
 courseRouter.put("/update",authAdmin, updateCourse);
 courseRouter.delete("/delete",authAdmin, deleteCourse);

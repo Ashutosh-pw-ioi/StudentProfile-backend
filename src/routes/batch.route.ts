@@ -7,6 +7,7 @@ const batchRouter = Router();
 
 batchRouter.post("/create",authAdmin, createBatch);
 batchRouter.get("/all",authAdmin, getBatchesByCenter);
+batchRouter.post("/all",authAdmin, getBatchesByCenter);
 batchRouter.put("/update",authAdmin, updateBatch);
 batchRouter.delete("/delete",authAdmin, deleteBatch);
 
