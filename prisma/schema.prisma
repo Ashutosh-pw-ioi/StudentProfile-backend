@@ -178,7 +178,7 @@ model CourseScore {
   course         Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId       String
 
-  @@unique([studentId, courseId])
+  @@unique([studentId, courseId,scoreType])
   @@map("course_scores")
 }
 

@@ -12,6 +12,7 @@ const marksRouter = express.Router();
 
 marksRouter.post("/upload-marks",authTeacher, uploadExcel.single("file"), addStudentMarks);
 marksRouter.get("/center-scores",authAdmin, getCourseScoresByCenter);
+marksRouter.post("/center-scores",authAdmin, getCourseScoresByCenter);
 marksRouter.put("/edit-score",authAdmin, editCourseScore);
 marksRouter.delete("/delete-score",authAdmin, deleteCourseScore);
 

@@ -20,6 +20,7 @@ teacherRouter.get("/teacher-academics", authTeacher, getTeachingDetails);
 teacherRouter.get("/student-profile/:id", getStudentProfile);
 
 teacherRouter.get("/center-teachers", authAdmin, getTeachersByCenter);
+teacherRouter.post("/center-teachers", authAdmin, getTeachersByCenter);
 teacherRouter.put("/update-teacher", authAdmin, updateTeacher);
 teacherRouter.delete("/delete-teacher", authAdmin, deleteTeacher);
 

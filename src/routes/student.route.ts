@@ -21,6 +21,7 @@ studentRouter.get("/get-batch-leaderboard", authStudent, getStudentMarksByBatch)
 studentRouter.get("/get-department-leaderboard", authStudent, getStudentMarksByDepartment);
 
 studentRouter.get("/get-center-students", authAdmin, getStudentsByCenter);
+studentRouter.post("/get-center-students", authAdmin, getStudentsByCenter);
 studentRouter.put("/edit-student", authAdmin, editStudent);
 studentRouter.delete("/delete-student", authAdmin, deleteStudent);
 
