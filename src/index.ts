@@ -25,6 +25,9 @@ app.use("/api/course", courseRouter);
 app.use("/api/batch", batchRouter);
 app.use("/api/admin", adminRouter);
 
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Server running" });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
