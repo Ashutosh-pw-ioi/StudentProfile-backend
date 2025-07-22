@@ -197,3 +197,13 @@ model Admin {
 
   @@map("admins")
 }
+
+model SummerCampBatch {
+  id             String   @id @default(uuid())
+  courseName     String
+  studentName    String
+  contactNumber  String   @unique
+
+  @@map("summerCampBatch") 
+}
+
