@@ -346,12 +346,11 @@ async function getScoreGraph(req: Request, res: Response) {
 async function getStudentMarksByBatch(req: Request, res: Response) {
   try {
     const studentId = req.userId as string;
-    const { courseCode, scoreType } = req.body;
 
-    if (!studentId || !courseCode || !scoreType) {
+    if (!studentId) {
       res.status(400).json({
         success: false,
-        message: "studentId, courseCode, and scoreType are required",
+        message: "Student ID is required",
       });
       return;
     }
@@ -362,7 +361,7 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         id: true,
         centerId: true,
         batchId: true,
-        center: { select: { name: true } },
+        center: { select: { name: true, location: true } },
         department: { select: { name: true } },
         batch: { select: { name: true } },
       },
@@ -376,31 +375,6 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
       return;
     }
 
-    const semester = await prisma.semester.findFirst({
-      where: { batchId: referenceStudent.batchId },
-      include: { courses: true },
-    });
-
-    if (!semester) {
-      res.status(404).json({
-        success: false,
-        message: "No semester found for this batch",
-      });
-      return;
-    }
-
-    const course = semester.courses.find((c) => c.code === courseCode);
-
-    if (!course) {
-      res.status(404).json({
-        success: false,
-        message: "Course not found for the provided courseCode in this batch",
-      });
-      return;
-    }
-
-    const courseId = course.id;
-
     const students = await prisma.student.findMany({
       where: {
         centerId: referenceStudent.centerId,
@@ -412,37 +386,62 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         email: true,
         enrollmentNumber: true,
         scores: {
-          where: {
-            courseId: courseId,
-            name: scoreType,
-          },
           select: {
             marksObtained: true,
+            scoreType: true,
+            course: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
     });
 
-    const studentsWithTotal = students.map((student) => {
-      const totalMarks = student.scores.reduce(
-        (sum, score) => sum + score.marksObtained,
-        0
-      );
-      const { scores, ...rest } = student;
+    type StudentWithTotal = {
+      id: string;
+      name: string;
+      email: string;
+      enrollmentNumber: string;
+      scores: {
+        marksObtained: number;
+        scoreType: string;
+        course: { name: string };
+      }[];
+      totalMarks: number;
+      rank?: number;
+    };
+
+    const studentsWithTotal: StudentWithTotal[] = students.map((student) => {
+      const totalMarks = student.scores.reduce((sum, score) => sum + score.marksObtained, 0);
       return {
-        ...rest,
+        ...student,
         totalMarks,
       };
     });
 
+    // Sort by total marks descending
     studentsWithTotal.sort((a, b) => b.totalMarks - a.totalMarks);
 
-    const rankedStudents = studentsWithTotal.map((student, index) => ({
-      ...student,
-      rank: index + 1,
-    }));
+    // Assign ranks (handle ties)
+    let rank = 1;
+    let prevMarks: number | null = null;
+    let sameRankCount = 0;
 
-    const currentStudent = rankedStudents.find((s) => s.id === studentId);
+    studentsWithTotal.forEach((student, index) => {
+      if (student.totalMarks === prevMarks) {
+        student.rank = rank;
+        sameRankCount++;
+      } else {
+        rank = index + 1;
+        student.rank = rank;
+        prevMarks = student.totalMarks;
+        sameRankCount = 1;
+      }
+    });
+
+    const currentStudent = studentsWithTotal.find((s) => s.id === studentId);
 
     res.status(200).json({
       success: true,
@@ -450,16 +449,14 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         center: referenceStudent.center,
         department: referenceStudent.department,
         batch: referenceStudent.batch,
-        course: { name: course.name, code: course.code },
-        scoreType,
         studentRank: currentStudent?.rank ?? null,
         studentTotalMarks: currentStudent?.totalMarks ?? 0,
-        students: rankedStudents,
-        totalStudents: rankedStudents.length,
+        students: studentsWithTotal,
+        totalStudents: studentsWithTotal.length,
       },
     });
   } catch (error) {
-    console.error("Error fetching leaderboard:", error);
+    console.error("Error fetching student marks by batch:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -467,25 +464,26 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
   }
 }
 
-async function getStudentMarksByDepartment(req: Request, res: Response) {
+
+async function getStudentMarksByDepartment(req: Request, res: Response){
   try {
     const studentId = req.userId as string;
-    const { courseCode, scoreType } = req.body;
 
-    if (!studentId || !courseCode || !scoreType) {
+    if (!studentId) {
       res.status(400).json({
         success: false,
-        message: "studentId, courseCode, and scoreType are required",
+        message: "Student ID is required",
       });
       return;
     }
 
+    // Fetch the current student to get department
     const referenceStudent = await prisma.student.findUnique({
       where: { id: studentId },
       select: {
         id: true,
-        department: { select: { name: true } },
         center: { select: { name: true } },
+        department: { select: { name: true } },
       },
     });
 
@@ -499,102 +497,83 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
 
     const departmentName = referenceStudent.department.name;
 
-    const semesters = await prisma.semester.findMany({
-      where: {
-        batch: {
-          department: {
-            name: departmentName,
-          },
-        },
-      },
-      include: {
-        courses: true,
-      },
-    });
-
-    const course = semesters
-      .flatMap((semester) => semester.courses)
-      .find((c) => c.code === courseCode);
-
-    if (!course) {
-      res.status(404).json({
-        success: false,
-        message:
-          "Course not found for the provided courseCode in this department",
-      });
-      return;
-    }
-
-    const courseId = course.id;
-
-    const students = await prisma.student.findMany({
+    // Fetch all students across all centers from the same department
+    const allStudents = await prisma.student.findMany({
       where: {
         department: { name: departmentName },
       },
       select: {
         id: true,
         name: true,
-        email: true,
         enrollmentNumber: true,
         semesterNo: true,
         center: { select: { name: true } },
         department: { select: { name: true } },
         scores: {
-          where: {
-            courseId: courseId,
-            name: scoreType,
-          },
           select: {
             marksObtained: true,
+            scoreType: true,
+            course: { select: { name: true } },
           },
         },
       },
     });
 
-    const studentsWithTotal = students.map((student) => {
-      const totalMarks = student.scores.reduce(
-        (sum, score) => sum + score.marksObtained,
-        0
-      );
-      const { scores, ...rest } = student;
+    // Add total marks to each student
+    type StudentWithTotal = typeof allStudents[number] & { totalMarks: number };
+    const studentsWithTotalMarks: StudentWithTotal[] = allStudents.map((student) => {
+      const totalMarks = student.scores.reduce((sum, score) => sum + score.marksObtained, 0);
       return {
-        ...rest,
+        ...student,
         totalMarks,
       };
     });
 
-    studentsWithTotal.sort((a, b) => b.totalMarks - a.totalMarks);
+    // Sort by totalMarks descending
+    studentsWithTotalMarks.sort((a, b) => b.totalMarks - a.totalMarks);
 
-    const rankedStudents = studentsWithTotal.map((student, index) => ({
-      ...student,
-      rank: index + 1,
-    }));
+    // Assign rank
+    let lastMarks: number | null = null;
+    let lastRank = 0;
+    let skip = 0;
 
-    const currentStudent = rankedStudents.find((s) => s.id === studentId);
+    const rankedStudents = studentsWithTotalMarks.map((student, index) => {
+      if (student.totalMarks === lastMarks) {
+        skip++;
+      } else {
+        lastRank = index + 1;
+        skip = 0;
+        lastMarks = student.totalMarks;
+      }
+
+      return {
+        ...student,
+        rank: lastRank,
+      };
+    });
+
+    // Find current student's data
+    const you = rankedStudents.find((s) => s.id === studentId);
 
     res.status(200).json({
       success: true,
       data: {
         department: departmentName,
-        course: { name: course.name, code: course.code },
-        scoreType,
         totalStudents: rankedStudents.length,
-        yourRank: currentStudent?.rank ?? null,
-        yourTotalMarks: currentStudent?.totalMarks ?? 0,
+        yourRank: you?.rank ?? null,
+        yourTotalMarks: you?.totalMarks ?? null,
         yourCenter: referenceStudent.center,
         yourDepartment: referenceStudent.department,
         students: rankedStudents,
       },
     });
-    return;
   } catch (error) {
-    console.error("Error fetching department leaderboard:", error);
+    console.error("Error fetching student ranks by department:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
-    });
-    return;
-  }
+    });
+  }
 }
 
 async function getStudentsByCenter(req: Request, res: Response) {
