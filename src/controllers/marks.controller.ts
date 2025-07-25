@@ -33,7 +33,10 @@ async function addStudentMarks(req: Request, res: Response) {
         !scoreType ||
         obtainedMarks === undefined
       ) {
-        console.warn(`Skipping invalid row:`, row);
+        res.status(404).json({
+          msg:"Skipping Invalid Rows",
+          data:row
+        })
         return;
       }
 
