@@ -188,6 +188,7 @@ async function getBatchesByCenter(req: Request, res: Response) {
         departments: departments.map((dept) => ({
           departmentName: dept.name,
           batches: dept.batches.map((batch) => ({
+            batchId: batch.id,
             batchName: batch.name,
             students: batch.students,
             teachers: batch.teachers,
