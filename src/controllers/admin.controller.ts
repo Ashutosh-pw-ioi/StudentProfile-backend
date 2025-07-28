@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import { prisma } from "../db/prisma.js";
 import { Role } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+async function hashPassword(password: string, saltRound: number): Promise<string> {
+  return bcrypt.hash(password, saltRound);
+}
 
 export async function listCenterDepartments(req: Request, res: Response) {
   const adminId = req.userId as string;
@@ -57,12 +62,14 @@ export async function createAdmin(req: Request, res: Response) {
        res.status(404).json({ success: false, message: "Center not found" });
        return;
     }
+    
+    const hashedPassword = await hashPassword(password,10);
 
     const admin = await prisma.admin.create({
       data: {
         name,
         email,
-        password,
+        password:hashedPassword,
         role: role as Role,
         centerId: center.id,
       },
@@ -132,12 +139,14 @@ export async function updateAdmin(req: Request, res: Response) {
       centerId = center.id;
     }
 
+    const hashedPassword = await hashPassword(password,10);
+
     const updatedAdmin = await prisma.admin.update({
       where: { id },
       data: {
         name,
         email,
-        password,
+        password:hashedPassword,
         role: role as Role,
         ...(centerId && { centerId }),
       },
