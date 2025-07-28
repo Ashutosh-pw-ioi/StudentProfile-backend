@@ -64,6 +64,7 @@ export const handleLogin = async (req: Request, res: Response) => {
       id: user.id,
       email: user.email,
       role: tokenPayload.role,
+      firstLoggedIn: user.firstLoggedIn
     },
   });
   return;
@@ -199,6 +200,91 @@ export const resetPassword = async (req: Request, res: Response) => {
         updatedUser = await prisma.admin.update({
           where: { id },
           data: { password: hashedPassword },
+        });
+        break;
+    }
+
+    const { password: _, ...safeUser } = updatedUser;
+
+    res.status(200).json({
+      success: true,
+      message: "Password updated successfully.",
+      user: safeUser,
+    });
+    return;
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ message: "Internal server error." });
+    return;
+  }
+};
+
+export const resetPasswordFirstTime = async (req: Request, res: Response) => {
+  const { id, token } = req.params;
+  const { password } = req.body;
+
+  if (!token || !id || !password) {
+    res.status(400).json({ message: "Token, ID, and password are required." });
+    return;
+  }
+
+  let decodedToken: JwtPayload;
+  try {
+    decodedToken = jwt.verify(token, JWT_SECRET) as JwtPayload;
+  } catch (err) {
+    res.status(401).json({ message: "Invalid or expired token." });
+    return;
+  }
+
+  try {
+    let user: any;
+    const userRole = decodedToken.role;
+
+    switch (userRole) {
+      case "STUDENT":
+        user = await prisma.student.findUnique({ where: { id } });
+        break;
+      case "TEACHER":
+        user = await prisma.teacher.findUnique({ where: { id } });
+        break;
+      case "ADMIN":
+        user = await prisma.admin.findUnique({ where: { id } });
+        break;
+      default:
+        res.status(400).json({ message: "Invalid role in token." });
+        return;
+    }
+
+    if (!user) {
+      res.status(404).json({ message: "User not found." });
+      return;
+    }
+
+    if (decodedToken.role === "ADMIN" && user.role !== "ADMIN") {
+      res.status(403).json({ message: "Access denied. Role mismatch." });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    let updatedUser: any;
+    switch (userRole) {
+      case "STUDENT":
+        updatedUser = await prisma.student.update({
+          where: { id },
+          data: { password: hashedPassword,firstLoggedIn:true },
+        });
+        break;
+      case "TEACHER":
+        updatedUser = await prisma.teacher.update({
+          where: { id },
+          data: { password: hashedPassword,firstLoggedIn:true },
+        });
+        break;
+      case "ADMIN":
+        updatedUser = await prisma.admin.update({
+          where: { id },
+          data: { password: hashedPassword, firstLoggedIn:true },
         });
         break;
     }
