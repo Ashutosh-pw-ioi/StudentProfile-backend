@@ -4,6 +4,10 @@ import { prisma } from "../db/prisma.js";
 import { DepartmentType } from "@prisma/client";
 import { parseStudentExcel } from "../utils/parseStudentExcel.js";
 
+async function hashPassword(password: string, saltRound: number): Promise<string> {
+  return bcrypt.hash(password, saltRound);
+}
+
 async function addStudent(req: Request, res: Response) {
   try {
     const userRole = req.userRole as string;
@@ -115,7 +119,7 @@ async function addStudent(req: Request, res: Response) {
         select: { id: true },
       });
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+     const hashedPassword = await hashPassword(password,10);
 
       const newStudent = await prisma.student.create({
         data: {
@@ -734,6 +738,9 @@ async function editStudent(req: Request, res: Response) {
 
     const courseIds = courses.map((course) => ({ id: course.id }));
 
+    const hashedPassword = await hashPassword(password,10);
+
+
     const updatedStudent = await prisma.student.update({
       where: { id },
       data: {
@@ -741,7 +748,7 @@ async function editStudent(req: Request, res: Response) {
         gender,
         phoneNumber,
         semesterNo,
-        password,
+        password:hashedPassword,
         centerId: center.id,
         departmentId: department.id,
         batchId: batch.id,
