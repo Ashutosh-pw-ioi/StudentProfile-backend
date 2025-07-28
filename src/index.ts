@@ -8,6 +8,7 @@ import marksRouter from "./routes/marks.route.js";
 import courseRouter from "./routes/course.route.js";
 import batchRouter from "./routes/batch.route.js";
 import adminRouter from "./routes/admin.route.js";
+import schemaBatchCampRoutes from "./routes/schemaBatchCamp.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -24,6 +25,7 @@ app.use("/api/marks", marksRouter);
 app.use("/api/course", courseRouter);
 app.use("/api/batch", batchRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/schemaBatchCamp", schemaBatchCampRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({ message: "Server running" });
