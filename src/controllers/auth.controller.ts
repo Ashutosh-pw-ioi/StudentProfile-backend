@@ -248,6 +248,7 @@ export const resetPasswordFirstTime = async (req: Request, res: Response) => {
         user = await prisma.teacher.findUnique({ where: { id } });
         break;
       case "ADMIN":
+      case "SUPER_ADMIN":
         user = await prisma.admin.findUnique({ where: { id } });
         break;
       default:
@@ -260,7 +261,8 @@ export const resetPasswordFirstTime = async (req: Request, res: Response) => {
       return;
     }
 
-    if (decodedToken.role === "ADMIN" && user.role !== "ADMIN") {
+    if ((userRole === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") ||
+        (userRole === "ADMIN" && user.role !== "ADMIN")) {
       res.status(403).json({ message: "Access denied. Role mismatch." });
       return;
     }
@@ -272,19 +274,20 @@ export const resetPasswordFirstTime = async (req: Request, res: Response) => {
       case "STUDENT":
         updatedUser = await prisma.student.update({
           where: { id },
-          data: { password: hashedPassword,firstLoggedIn:true },
+          data: { password: hashedPassword, firstLoggedIn: true },
         });
         break;
       case "TEACHER":
         updatedUser = await prisma.teacher.update({
           where: { id },
-          data: { password: hashedPassword,firstLoggedIn:true },
+          data: { password: hashedPassword, firstLoggedIn: true },
         });
         break;
       case "ADMIN":
+      case "SUPER_ADMIN":
         updatedUser = await prisma.admin.update({
           where: { id },
-          data: { password: hashedPassword, firstLoggedIn:true },
+          data: { password: hashedPassword, firstLoggedIn: true },
         });
         break;
     }
@@ -296,11 +299,10 @@ export const resetPasswordFirstTime = async (req: Request, res: Response) => {
       message: "Password updated successfully.",
       user: safeUser,
     });
-    return;
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ message: "Internal server error." });
-    return;
   }
 };
+
 
