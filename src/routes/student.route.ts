@@ -18,9 +18,9 @@ const studentRouter = Router();
 studentRouter.post("/add-student",authAdmin, uploadExcel.single("file"), addStudent);
 studentRouter.get("/get-student-profile", authStudent, getStudentDetails);
 studentRouter.get("/get-student-academics", authStudent, getStudentAcademicDetails);
-studentRouter.get('/get-course-graph',authStudent,getScoreGraph)
-studentRouter.get("/get-batch-leaderboard", authStudent, getStudentMarksByBatch);
-studentRouter.get("/get-department-leaderboard", authStudent, getStudentMarksByDepartment);
+studentRouter.post('/get-course-graph',authStudent,getScoreGraph)
+studentRouter.post("/get-batch-leaderboard", authStudent, getStudentMarksByBatch);
+studentRouter.post("/get-department-leaderboard", authStudent, getStudentMarksByDepartment);
 
 studentRouter.get("/get-center-students", authAdmin, getStudentsByCenter);
 studentRouter.post("/get-center-students", authAdmin, getStudentsByCenter);
