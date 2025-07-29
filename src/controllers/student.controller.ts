@@ -298,16 +298,20 @@ async function getStudentAcademicDetails(req: Request, res: Response) {
 async function getScoreGraph(req: Request, res: Response) {
   try {
     const userId = req.userId;
-    const { courseCode, scoreType } = req.body;
+    const { courseCode, scoreType, semester } = req.body;
 
-    if (!userId || !courseCode || !scoreType) {
+    if (!userId || !courseCode || !scoreType || !semester) {
       res.status(400).json({ message: "Missing required fields" });
       return;
     }
 
+    // Find the course based on courseCode and semester
     const course = await prisma.course.findFirst({
       where: {
         code: courseCode,
+        semester: {
+          number: semester
+        },
         students: {
           some: {
             id: userId,
@@ -317,7 +321,7 @@ async function getScoreGraph(req: Request, res: Response) {
     });
 
     if (!course) {
-      res.status(404).json({ message: "Course not found for student" });
+      res.status(404).json({ message: "Course not found for student in specified semester" });
       return;
     }
 
@@ -348,15 +352,16 @@ async function getScoreGraph(req: Request, res: Response) {
   }
 }
 
+
 async function getStudentMarksByBatch(req: Request, res: Response) {
   try {
     const studentId = req.userId as string;
-    const { courseCode, scoreType } = req.body;
+    const { courseCode, scoreType, semester } = req.body;
 
-    if (!studentId || !courseCode || !scoreType) {
+    if (!studentId || !courseCode || !scoreType || !semester) {
       res.status(400).json({
         success: false,
-        message: "studentId, courseCode, and scoreType are required",
+        message: "studentId, courseCode, scoreType, and semester are required",
       });
       return;
     }
@@ -381,35 +386,37 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
       return;
     }
 
-    const semester = await prisma.semester.findFirst({
-      where: { batchId: referenceStudent.batchId },
-      include: { courses: true },
+    // Find the specific semester and course
+    const semesterRecord = await prisma.semester.findFirst({
+      where: { 
+        batchId: referenceStudent.batchId,
+        number: semester
+      },
+      include: { 
+        courses: {
+          where: {
+            code: courseCode
+          }
+        }
+      },
     });
 
-    if (!semester) {
+    if (!semesterRecord || semesterRecord.courses.length === 0) {
       res.status(404).json({
         success: false,
-        message: "No semester found for this batch",
+        message: "Course not found for the provided courseCode and semester in this batch",
       });
       return;
     }
 
-    const course = semester.courses.find((c) => c.code === courseCode);
-
-    if (!course) {
-      res.status(404).json({
-        success: false,
-        message: "Course not found for the provided courseCode in this batch",
-      });
-      return;
-    }
-
+    const course = semesterRecord.courses[0];
     const courseId = course.id;
 
     const students = await prisma.student.findMany({
       where: {
         centerId: referenceStudent.centerId,
         batchId: referenceStudent.batchId,
+        semesterNo: { gte: semester }, // Students should be in this semester or higher
       },
       select: {
         id: true,
@@ -455,6 +462,7 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
         center: referenceStudent.center,
         department: referenceStudent.department,
         batch: referenceStudent.batch,
+        semester: semester,
         course: { name: course.name, code: course.code },
         scoreType,
         studentRank: currentStudent?.rank ?? null,
@@ -472,15 +480,16 @@ async function getStudentMarksByBatch(req: Request, res: Response) {
   }
 }
 
+
 async function getStudentMarksByDepartment(req: Request, res: Response) {
   try {
     const studentId = req.userId as string;
-    const { courseCode, scoreType } = req.body;
+    const { courseCode, scoreType, semester } = req.body;
 
-    if (!studentId || !courseCode || !scoreType) {
+    if (!studentId || !courseCode || !scoreType || !semester) {
       res.status(400).json({
         success: false,
-        message: "studentId, courseCode, and scoreType are required",
+        message: "studentId, courseCode, scoreType, and semester are required",
       });
       return;
     }
@@ -504,8 +513,10 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
 
     const departmentName = referenceStudent.department.name;
 
+    // Find semesters with the specific semester number in the department
     const semesters = await prisma.semester.findMany({
       where: {
+        number: semester,
         batch: {
           department: {
             name: departmentName,
@@ -513,7 +524,11 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
         },
       },
       include: {
-        courses: true,
+        courses: {
+          where: {
+            code: courseCode
+          }
+        },
       },
     });
 
@@ -525,7 +540,7 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
       res.status(404).json({
         success: false,
         message:
-          "Course not found for the provided courseCode in this department",
+          "Course not found for the provided courseCode and semester in this department",
       });
       return;
     }
@@ -535,6 +550,7 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
     const students = await prisma.student.findMany({
       where: {
         department: { name: departmentName },
+        semesterNo: { gte: semester }, // Students should be in this semester or higher
       },
       select: {
         id: true,
@@ -581,6 +597,7 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
       success: true,
       data: {
         department: departmentName,
+        semester: semester,
         course: { name: course.name, code: course.code },
         scoreType,
         totalStudents: rankedStudents.length,
@@ -601,6 +618,7 @@ async function getStudentMarksByDepartment(req: Request, res: Response) {
     return;
   }
 }
+
 
 async function getStudentsByCenter(req: Request, res: Response) {
   try {
