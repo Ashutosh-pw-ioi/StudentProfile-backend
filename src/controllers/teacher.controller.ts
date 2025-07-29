@@ -116,8 +116,8 @@ import bcrypt from "bcryptjs";
           },
         },
       });
-
-      createdTeachers.push(newTeacher);
+      const {password:_,...newTeacherWithoutPassword}=newTeacher
+      createdTeachers.push(newTeacherWithoutPassword);
     }
 
      res.status(201).json({
@@ -527,10 +527,12 @@ async function updateTeacher (req: Request, res: Response){
       },
     });
 
+    const {password:_,...updatedTeacherWithoutPassword}=updatedTeacher
+
     res.status(200).json({
       success: true,
       message: "Teacher updated successfully",
-      data: updatedTeacher,
+      data: updatedTeacherWithoutPassword,
     });
     return;
   } catch (error) {

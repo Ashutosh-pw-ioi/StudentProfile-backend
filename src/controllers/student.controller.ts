@@ -139,7 +139,8 @@ async function addStudent(req: Request, res: Response) {
         },
       });
 
-      createdStudents.push(newStudent);
+      const { password: _, ...studentWithoutPassword } = newStudent;
+      createdStudents.push(studentWithoutPassword);
     }
 
     res.status(201).json({
@@ -778,11 +779,12 @@ async function editStudent(req: Request, res: Response) {
         },
       },
     });
+    const { password: _, ...updatedStudentWithoutPassword } = updatedStudent;
 
     res.status(200).json({
       success: true,
       message: "Student updated successfully and courses refreshed.",
-      student: updatedStudent,
+      student: updatedStudentWithoutPassword,
     });
     return;
   } catch (error) {
