@@ -59,29 +59,36 @@ export async function createAdmin(req: Request, res: Response) {
     });
 
     if (!center) {
-       res.status(404).json({ success: false, message: "Center not found" });
-       return;
+      res.status(404).json({ success: false, message: "Center not found" });
+      return;
     }
-    
-    const hashedPassword = await hashPassword(password,10);
+
+    const hashedPassword = await hashPassword(password, 10);
 
     const admin = await prisma.admin.create({
       data: {
         name,
         email,
-        password:hashedPassword,
+        password: hashedPassword,
         role: role as Role,
         centerId: center.id,
       },
     });
 
-    res.status(201).json({ success: true, data: admin });
+    const { password: _, ...adminWithoutPassword } = admin;
+
+    res.status(201).json({ success: true, data: adminWithoutPassword });
     return;
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error creating admin", error: err });
+    res.status(500).json({
+      success: false,
+      message: "Error creating admin",
+      error: err,
+    });
     return;
   }
 }
+
 
 export async function getAllAdmins(req: Request, res: Response) {
   try {
@@ -91,13 +98,16 @@ export async function getAllAdmins(req: Request, res: Response) {
       },
     });
 
-    res.json({ success: true, data: admins });
+    const sanitizedAdmins = admins.map(({ password, ...admin }) => admin);
+
+    res.json({ success: true, data: sanitizedAdmins });
     return;
   } catch (err) {
     res.status(500).json({ success: false, message: "Error fetching admins", error: err });
     return;
   }
 }
+
 
 export async function getAdminById(req: Request, res: Response) {
   try {
@@ -114,8 +124,8 @@ export async function getAdminById(req: Request, res: Response) {
        res.status(404).json({ success: false, message: "Admin not found" });
        return;
     }
-
-    res.json({ success: true, data: admin });
+    const {password,...adminWithoutPassword}=admin
+    res.json({ success: true, data: adminWithoutPassword });
     return;
   } catch (err) {
     res.status(500).json({ success: false, message: "Error fetching admin", error: err });
@@ -151,8 +161,9 @@ export async function updateAdmin(req: Request, res: Response) {
         ...(centerId && { centerId }),
       },
     });
-
-    res.json({ success: true, data: updatedAdmin });
+    
+    const {password:_,...updateAdminWithoutPassword}=updatedAdmin
+    res.json({ success: true, data: updateAdminWithoutPassword });
     return;
   } catch (err) {
     res.status(500).json({ success: false, message: "Error updating admin", error: err });
