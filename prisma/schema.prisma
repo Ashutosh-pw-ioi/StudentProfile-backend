@@ -115,6 +115,7 @@ model Teacher {
   name          String
   email         String     @unique
   password      String
+  firstLoggedIn    Boolean        @default(false)
   gender        String
   phoneNumber   String
   experience    Int
@@ -138,6 +139,7 @@ model Student {
   id               String         @id @default(uuid())
   name             String
   email            String         @unique
+  firstLoggedIn    Boolean        @default(false)
   gender           String
   phoneNumber      String
   enrollmentNumber String         @unique
@@ -186,6 +188,7 @@ model Admin {
   id          String   @id @default(uuid())
   name        String
   email       String   @unique
+  firstLoggedIn    Boolean        @default(false)
   password    String
   role        Role     @default(ADMIN)
 
